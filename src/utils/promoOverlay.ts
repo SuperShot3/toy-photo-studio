@@ -4,12 +4,16 @@ export function isPromoStyle(style: ImageStyle): boolean {
   return style === 'styled-promo' || style === 'luxury-promo';
 }
 
+// encodeURI (not encodeURIComponent): Vite serves this file when `&` stays as `&`.
+export const STUDIO_LOGO_URL = `/logo/${encodeURI('Logo & Flower Delivery no bg.png')}`;
+
 export interface PromoOverlayOptions {
   imageUrl: string;
   style: ImageStyle;
   headline: string;
   tagline: string;
   sizeLabel?: string;
+  includeLogo?: boolean;
 }
 
 function wrapText(
@@ -75,13 +79,29 @@ function fitFontSize(
   return { size: minSize, lines: wrapText(ctx, text, maxWidth, maxLines) };
 }
 
-function loadImage(src: string): Promise<HTMLImageElement> {
+function loadImage(
+  src: string,
+  errorMessage = 'Could not load studio image for overlay.'
+): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error('Could not load studio image for overlay.'));
+    img.onerror = () => reject(new Error(errorMessage));
     img.src = src;
   });
+}
+
+async function drawStudioLogo(ctx: CanvasRenderingContext2D, canvasWidth: number): Promise<void> {
+  const logo = await loadImage(STUDIO_LOGO_URL, 'Could not load brand logo for overlay.');
+  const naturalW = logo.naturalWidth || logo.width;
+  const naturalH = logo.naturalHeight || logo.height;
+  const logoW = canvasWidth * 0.16;
+  const logoH = naturalW > 0 ? logoW * (naturalH / naturalW) : logoW;
+  const pad = canvasWidth * 0.035;
+  ctx.shadowColor = 'transparent';
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetY = 0;
+  ctx.drawImage(logo, canvasWidth - pad - logoW, pad, logoW, logoH);
 }
 
 async function ensureOverlayFonts(): Promise<void> {
@@ -119,15 +139,16 @@ function drawRoundedRect(
 }
 
 /**
- * Bakes product name + selling line onto a promo studio shot.
- * Catalog shots should not call this — they stay text-free for marketplaces.
+ * Bakes product name + selling line (promo) and/or the brand logo onto a studio shot.
+ * Catalog shots can still call this with includeLogo and empty headline/tagline.
  */
 export async function composePromoOverlay(options: PromoOverlayOptions): Promise<string> {
   const headline = options.headline.trim();
   const tagline = options.tagline.trim();
-  if (!headline && !tagline) return options.imageUrl;
+  const printText = Boolean(headline || tagline);
+  if (!printText && !options.includeLogo) return options.imageUrl;
 
-  await ensureOverlayFonts();
+  if (printText) await ensureOverlayFonts();
   const img = await loadImage(options.imageUrl);
 
   const canvas = document.createElement('canvas');
@@ -139,6 +160,18 @@ export async function composePromoOverlay(options: PromoOverlayOptions): Promise
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
   const w = canvas.width;
+
+  if (!printText) {
+    if (options.includeLogo) {
+      try {
+        await drawStudioLogo(ctx, w);
+      } catch {
+        // Keep the photo even if the logo asset fails to load.
+      }
+    }
+    return canvas.toDataURL('image/png');
+  }
+
   const h = canvas.height;
   const padX = Math.round(w * 0.07);
   const maxTextWidth = w - padX * 2;
@@ -260,6 +293,14 @@ export async function composePromoOverlay(options: PromoOverlayOptions): Promise
 
     ctx.textBaseline = 'middle';
     ctx.fillText(label, padX + pillPadX, pillY + pillH / 2 + 0.5);
+  }
+
+  if (options.includeLogo) {
+    try {
+      await drawStudioLogo(ctx, w);
+    } catch {
+      // Keep the photo even if the logo asset fails to load.
+    }
   }
 
   return canvas.toDataURL('image/png');

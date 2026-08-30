@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Download, RefreshCw, Copy, Check, ArrowDownToLine, Type } from 'lucide-react';
 import { GeneratedResult, sizeCmForProduct } from '../types';
 import { BeforeAfterSlider } from './BeforeAfterSlider';
-import { composePromoOverlay, isPromoStyle } from '../utils/promoOverlay';
+import { composePromoOverlay, isPromoStyle, STUDIO_LOGO_URL } from '../utils/promoOverlay';
 
 interface ResultViewProps {
   result: GeneratedResult;
@@ -21,20 +21,23 @@ export const ResultView: React.FC<ResultViewProps> = ({
   const promo = isPromoStyle(result.style);
   const sizeCm = sizeCmForProduct(result.productKind, result.toySizeCm);
   const [overlayOn, setOverlayOn] = useState(promo);
+  const [logoOn, setLogoOn] = useState(false);
   const [headline, setHeadline] = useState(result.productName || result.productTitle);
   const [tagline, setTagline] = useState(result.sellingLine);
   const [displayImage, setDisplayImage] = useState(result.imageUrl);
   const [isComposing, setIsComposing] = useState(false);
+  const printName = promo && overlayOn;
 
   useEffect(() => {
     setOverlayOn(isPromoStyle(result.style));
+    setLogoOn(false);
     setHeadline(result.productName || result.productTitle);
     setTagline(result.sellingLine);
     setDisplayImage(result.imageUrl);
   }, [result.imageUrl, result.style, result.productName, result.productTitle, result.sellingLine]);
 
   useEffect(() => {
-    if (!promo || !overlayOn) {
+    if (!printName && !logoOn) {
       setDisplayImage(result.imageUrl);
       setIsComposing(false);
       return;
@@ -46,9 +49,10 @@ export const ResultView: React.FC<ResultViewProps> = ({
       composePromoOverlay({
         imageUrl: result.imageUrl,
         style: result.style,
-        headline: headline.trim() || result.productName || 'Product',
-        tagline: tagline.trim(),
-        sizeLabel: sizeCm ? `${sizeCm} cm` : '',
+        headline: printName ? headline.trim() || result.productName || 'Product' : '',
+        tagline: printName ? tagline.trim() : '',
+        sizeLabel: printName && sizeCm ? `${sizeCm} cm` : '',
+        includeLogo: logoOn,
       })
         .then((url) => {
           if (!cancelled) setDisplayImage(url);
@@ -66,7 +70,8 @@ export const ResultView: React.FC<ResultViewProps> = ({
       window.clearTimeout(timer);
     };
   }, [
-    promo,
+    printName,
+    logoOn,
     overlayOn,
     headline,
     tagline,
@@ -82,7 +87,8 @@ export const ResultView: React.FC<ResultViewProps> = ({
     const sanitizedTitle = (result.productName || 'studio-photo')
       .toLowerCase()
       .replace(/[^a-z0-9]/g, '-');
-    const suffix = promo && overlayOn ? 'promo' : result.style;
+    const suffix =
+      printName && logoOn ? 'promo-logo' : printName ? 'promo' : logoOn ? 'logo' : result.style;
     const mime = displayImage.match(/^data:(image\/[a-zA-Z0-9.+-]+)/)?.[1] || 'image/png';
     const ext =
       mime.includes('jpeg') || mime.includes('jpg')
@@ -164,72 +170,104 @@ export const ResultView: React.FC<ResultViewProps> = ({
         />
         {isComposing && (
           <p className="absolute bottom-10 left-1/2 -translate-x-1/2 z-30 pointer-events-none px-2.5 py-0.5 rounded-full bg-slate-900/70 text-white text-[10px] font-medium">
-            Printing name on photo
+            {printName && logoOn
+              ? 'Printing name and logo'
+              : logoOn
+                ? 'Adding logo'
+                : 'Printing name on photo'}
           </p>
         )}
       </div>
 
-      {promo && (
-        <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3.5 space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 min-w-0">
-              <Type className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-              <div className="min-w-0">
-                <p className="text-[11px] font-bold text-slate-800">Name on photo</p>
-                <p className="text-[10px] text-slate-500 truncate">
-                  Printed on the image so the shot is ready to post or sell
-                </p>
+      <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3.5 space-y-3">
+        {promo && (
+          <>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <Type className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-[11px] font-bold text-slate-800">Name on photo</p>
+                  <p className="text-[10px] text-slate-500 truncate">
+                    Printed on the image so the shot is ready to post or sell
+                  </p>
+                </div>
               </div>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={overlayOn}
-              onClick={() => setOverlayOn((on) => !on)}
-              className={`relative w-10 h-5 rounded-full transition-colors shrink-0 cursor-pointer ${
-                overlayOn ? 'bg-indigo-600' : 'bg-slate-300'
-              }`}
-            >
-              <span
-                className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${
-                  overlayOn ? 'translate-x-5' : 'translate-x-0'
+              <button
+                type="button"
+                role="switch"
+                aria-checked={overlayOn}
+                onClick={() => setOverlayOn((on) => !on)}
+                className={`relative w-10 h-5 rounded-full transition-colors shrink-0 cursor-pointer ${
+                  overlayOn ? 'bg-indigo-600' : 'bg-slate-300'
                 }`}
-              />
-            </button>
-          </div>
-
-          {overlayOn && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
-                  Name on image
-                </label>
-                <input
-                  type="text"
-                  value={headline}
-                  onChange={(e) => setHeadline(e.target.value)}
-                  maxLength={48}
-                  placeholder="Product name"
-                  className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+              >
+                <span
+                  className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${
+                    overlayOn ? 'translate-x-5' : 'translate-x-0'
+                  }`}
                 />
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
-                  Selling line
-                </label>
-                <input
-                  type="text"
-                  value={tagline}
-                  onChange={(e) => setTagline(e.target.value)}
-                  maxLength={72}
-                  placeholder="Short line that helps people buy"
-                  className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
-                />
-              </div>
+              </button>
             </div>
-          )}
-        </div>
-      )}
+
+            {overlayOn && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                    Name on image
+                  </label>
+                  <input
+                    type="text"
+                    value={headline}
+                    onChange={(e) => setHeadline(e.target.value)}
+                    maxLength={48}
+                    placeholder="Product name"
+                    className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                    Selling line
+                  </label>
+                  <input
+                    type="text"
+                    value={tagline}
+                    onChange={(e) => setTagline(e.target.value)}
+                    maxLength={72}
+                    placeholder="Short line that helps people buy"
+                    className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                  />
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        <label
+          className={`flex items-center justify-between gap-3 cursor-pointer ${
+            promo ? 'pt-3 border-t border-slate-200' : ''
+          }`}
+        >
+          <span className="flex items-center gap-2.5 min-w-0">
+            <img
+              src={STUDIO_LOGO_URL}
+              alt=""
+              className="w-9 h-9 rounded-md object-contain bg-white border border-slate-200 shrink-0 p-0.5"
+            />
+            <span className="min-w-0">
+              <span className="block text-[11px] font-bold text-slate-800">Add logo</span>
+              <span className="block text-[10px] text-slate-500 truncate">
+                Stamp Lanna Bloom in the top-right of the photo
+              </span>
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            checked={logoOn}
+            onChange={(e) => setLogoOn(e.target.checked)}
+            className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer shrink-0"
+          />
+        </label>
+      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-2 border-t border-slate-100">
         <div className="space-y-3">
@@ -275,11 +313,15 @@ export const ResultView: React.FC<ResultViewProps> = ({
               <li className="flex items-center gap-2">
                 <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full shrink-0"></span>
                 <span>
-                  {promo
-                    ? overlayOn
+                  {printName && logoOn
+                    ? 'Product name and brand logo printed on the photo'
+                    : printName
                       ? 'Product name printed on the photo for ads and social'
-                      : 'Promo type is off — download is the clean studio shot'
-                    : 'Text-free catalog frame for Amazon and Shopify'}
+                      : logoOn
+                        ? 'Brand logo stamped in the top-right of the photo'
+                        : promo
+                          ? 'Promo type is off — download is the clean studio shot'
+                          : 'Text-free catalog frame for Amazon and Shopify'}
                 </span>
               </li>
             </ul>
@@ -292,7 +334,7 @@ export const ResultView: React.FC<ResultViewProps> = ({
               className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs"
             >
               <ArrowDownToLine className="w-4 h-4" />
-              {promo && overlayOn ? 'Download Designed Promo Image' : 'Download High-Res Studio Image'}
+              {printName || logoOn ? 'Download Designed Promo Image' : 'Download High-Res Studio Image'}
             </button>
 
             <button
