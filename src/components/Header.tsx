@@ -1,7 +1,11 @@
 import React from 'react';
-import { Camera, Sparkles, ShieldCheck } from 'lucide-react';
+import { Camera, Menu } from 'lucide-react';
 
-export const Header: React.FC = () => {
+interface HeaderProps {
+  onOpenSettings: () => void;
+}
+
+export const Header: React.FC<HeaderProps> = ({ onOpenSettings }) => {
   return (
     <header className="border-b border-slate-200 bg-white sticky top-0 z-30 shadow-xs">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
@@ -24,15 +28,15 @@ export const Header: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 text-xs text-slate-600 font-medium bg-slate-50 py-1.5 px-3 rounded-lg border border-slate-200">
-            <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span className="hidden sm:inline">1:1 Subject Geometry Preserved</span>
-            <span className="sm:hidden">Preserved</span>
-          </div>
-        </div>
+        <button
+          type="button"
+          onClick={onOpenSettings}
+          className="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 cursor-pointer"
+          aria-label="Open settings"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
       </div>
     </header>
   );
 };
-

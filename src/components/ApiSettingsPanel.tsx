@@ -101,8 +101,8 @@ export const ApiSettingsPanel: React.FC<ApiSettingsPanelProps> = ({
               </button>
             </div>
             <p className="text-[10px] text-slate-400 mt-1.5">
-              Photos use the model you pick below Generate. Copy uses gpt-4o-mini. Get a key at
-              platform.openai.com
+              Photos use the model you pick on the studio panel. Copy uses gpt-4o-mini. Get a key
+              at platform.openai.com
             </p>
           </div>
 

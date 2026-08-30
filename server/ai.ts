@@ -3,6 +3,7 @@ import {
   buildCopyPrompt,
   buildImproveDescriptionPrompt,
   buildStudioPrompt,
+  buildSubjectClassifyPrompt,
   GeneratedCopyResult,
   ImprovedCopyResult,
   parseJsonFromText,
@@ -11,11 +12,17 @@ import {
 import {
   parseOpenAiImageModel,
   parseProductKind,
+  parseProductSubject,
+  sizeCmForProduct,
   type ImageStyle,
   type OpenAiImageModel,
   type PersonScale,
   type ProductKind,
+  type ProductSubject,
 } from "../src/types.js";
+
+const UNSUPPORTED_SUBJECT_MESSAGE =
+  "This photo does not look like a toy or flowers. Upload a toy or flower product photo, then try again.";
 
 export interface AiConfig {
   apiKey: string;
@@ -27,7 +34,7 @@ function resolveApiKey(config: AiConfig): string {
     const envKey = process.env.OPENAI_API_KEY;
     if (envKey?.trim()) return envKey.trim();
     throw new HttpError(
-      "No OpenAI API key provided. Add it in the app settings panel.",
+      "No OpenAI API key provided. Add it in Settings (menu in the header).",
       400
     );
   }
@@ -103,7 +110,7 @@ function extractErrorMessage(error: unknown, fallback: string): string {
     return "This OpenAI organization must be verified to generate images. Verify it at platform.openai.com, then try again.";
   }
   if (/invalid api key|incorrect api key|authentication/i.test(msg)) {
-    return "The API key was rejected. Check it in the settings panel and try again.";
+    return "The API key was rejected. Check it in Settings and try again.";
   }
   if (/insufficient_quota|billing/i.test(msg)) {
     return "This API key is out of credit or billing is not enabled. Check the provider billing page, then try again.";
@@ -162,6 +169,54 @@ function decodeReferenceImage(
   return { cleanBase64: payload, mimeType: mime, buffer };
 }
 
+async function classifyProductSubject(
+  apiKey: string,
+  decoded: { cleanBase64: string; mimeType: string }
+): Promise<ProductSubject | null> {
+  const openai = getOpenAIClient(apiKey);
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "image_url",
+            image_url: { url: `data:${decoded.mimeType};base64,${decoded.cleanBase64}` },
+          },
+          { type: "text", text: buildSubjectClassifyPrompt() },
+        ],
+      },
+    ],
+    response_format: { type: "json_object" },
+  });
+
+  const parsed = parseJsonFromText<{ kind?: unknown }>(
+    response.choices[0]?.message?.content || "{}",
+    {}
+  );
+  return parseProductSubject(parsed.kind);
+}
+
+function resolveKindFromImage(
+  selectedKind: ProductKind,
+  detected: ProductSubject | null
+): { productKind: ProductKind; kindSwitchedFrom?: ProductKind } {
+  if (detected === "other") {
+    throw new HttpError(UNSUPPORTED_SUBJECT_MESSAGE, 400);
+  }
+
+  if (!detected) {
+    return { productKind: selectedKind };
+  }
+
+  if (detected !== selectedKind) {
+    return { productKind: detected, kindSwitchedFrom: selectedKind };
+  }
+
+  return { productKind: detected };
+}
+
 export async function improveDescription(
   config: AiConfig,
   params: {
@@ -172,9 +227,22 @@ export async function improveDescription(
     imageBase64?: string;
     mimeType?: string;
   }
-): Promise<ImprovedCopyResult> {
+): Promise<ImprovedCopyResult & { productKind: ProductKind; kindSwitchedFrom?: ProductKind }> {
   const apiKey = resolveApiKey(config);
-  const floral = parseProductKind(params.productKind) === "flowers";
+  const selectedKind = parseProductKind(params.productKind);
+  let productKind = selectedKind;
+  let kindSwitchedFrom: ProductKind | undefined;
+  let decodedImage: { cleanBase64: string; mimeType: string; buffer: Buffer } | undefined;
+
+  if (params.imageBase64) {
+    decodedImage = decodeReferenceImage(params.imageBase64, params.mimeType || "image/jpeg");
+    const detected = await classifyProductSubject(apiKey, decodedImage);
+    const resolved = resolveKindFromImage(selectedKind, detected);
+    productKind = resolved.productKind;
+    kindSwitchedFrom = resolved.kindSwitchedFrom;
+  }
+
+  const floral = productKind === "flowers";
   const fallback: ImprovedCopyResult = floral
     ? {
         productTitle: params.productName || "Fresh Garden Bouquet",
@@ -191,16 +259,19 @@ export async function improveDescription(
           "A beautifully crafted toy made with care, offering endless imagination and tactile delight for children and collectors alike.",
       };
 
-  const promptText = buildImproveDescriptionPrompt(params);
+  const promptText = buildImproveDescriptionPrompt({
+    ...params,
+    productKind,
+    toySizeCm: sizeCmForProduct(productKind, params.toySizeCm),
+  });
 
   const openai = getOpenAIClient(apiKey);
   const userContent: OpenAI.Chat.Completions.ChatCompletionContentPart[] = [];
 
-  if (params.imageBase64) {
-    const decoded = decodeReferenceImage(params.imageBase64, params.mimeType || "image/jpeg");
+  if (decodedImage) {
     userContent.push({
       type: "image_url",
-      image_url: { url: `data:${decoded.mimeType};base64,${decoded.cleanBase64}` },
+      image_url: { url: `data:${decodedImage.mimeType};base64,${decodedImage.cleanBase64}` },
     });
   }
 
@@ -213,7 +284,12 @@ export async function improveDescription(
   });
 
   const rawText = response.choices[0]?.message?.content || "{}";
-  return parseJsonFromText(rawText, fallback);
+  const copy = parseJsonFromText(rawText, fallback);
+  return {
+    ...copy,
+    productKind,
+    ...(kindSwitchedFrom ? { kindSwitchedFrom } : {}),
+  };
 }
 
 function supportsInputFidelity(model: OpenAiImageModel): boolean {
@@ -224,7 +300,7 @@ type ImageEditExtras = {
   quality?: "medium";
   output_format?: "jpeg";
   output_compression?: number;
-  input_fidelity?: "low";
+  input_fidelity?: "low" | "high";
 };
 
 function fallbackModels(preferred: OpenAiImageModel): OpenAiImageModel[] {
@@ -260,19 +336,23 @@ async function generateImageOpenAI(
   buffer: Buffer,
   mimeType: string,
   masterPrompt: string,
-  model: OpenAiImageModel
+  model: OpenAiImageModel,
+  productKind: ProductKind
 ): Promise<string> {
   const openai = getOpenAIClient(apiKey);
   const ext = extensionForMime(mimeType);
   const bytes = new Uint8Array(buffer);
   let lastError: unknown;
+  const floral = productKind === "flowers";
 
   for (const candidate of fallbackModels(model)) {
     const extras: ImageEditExtras = {
       quality: "medium",
       output_format: "jpeg",
       output_compression: 85,
-      ...(supportsInputFidelity(candidate) ? { input_fidelity: "low" as const } : {}),
+      ...(supportsInputFidelity(candidate)
+        ? { input_fidelity: floral ? ("high" as const) : ("low" as const) }
+        : {}),
     };
 
     for (let attempt = 0; attempt < 5; attempt++) {
@@ -411,6 +491,7 @@ export async function generatePhoto(
     productKind?: ProductKind;
     style: ImageStyle;
     personScale: PersonScale;
+    styleRefPrompt?: string;
     openaiImageModel?: OpenAiImageModel;
   }
 ): Promise<{
@@ -418,18 +499,34 @@ export async function generatePhoto(
   productTitle: string;
   sellingLine: string;
   marketingDescription: string;
+  productKind: ProductKind;
+  kindSwitchedFrom?: ProductKind;
+  productName: string;
+  toySizeCm?: string | number;
 }> {
   const apiKey = resolveApiKey(config);
   const decoded = decodeReferenceImage(params.imageBase64, params.mimeType);
+  const selectedKind = parseProductKind(params.productKind);
+  const detected = await classifyProductSubject(apiKey, decoded);
+  const { productKind, kindSwitchedFrom } = resolveKindFromImage(selectedKind, detected);
 
-  const productKind = parseProductKind(params.productKind);
+  const productName =
+    String(params.productName || "").trim() || (productKind === "flowers" ? "Bouquet" : "Toy");
+  const toySizeCm =
+    sizeCmForProduct(productKind, params.toySizeCm) ??
+    (productKind === "toy" ? 20 : undefined);
+
   const promptParams: StudioPromptParams = {
-    productName: params.productName,
-    toySizeCm: params.toySizeCm,
+    productName,
+    toySizeCm,
     productDescription: params.productDescription,
     productKind,
     style: params.style,
     personScale: params.personScale,
+    styleRefPrompt:
+      params.style === "styled-promo" || params.style === "luxury-promo"
+        ? params.styleRefPrompt?.trim() || undefined
+        : undefined,
   };
 
   const masterPrompt = buildStudioPrompt(promptParams);
@@ -441,7 +538,8 @@ export async function generatePhoto(
       decoded.buffer,
       decoded.mimeType,
       masterPrompt,
-      parseOpenAiImageModel(params.openaiImageModel)
+      parseOpenAiImageModel(params.openaiImageModel),
+      productKind
     );
   } catch (imageErr) {
     if (imageErr instanceof HttpError) throw imageErr;
@@ -454,8 +552,8 @@ export async function generatePhoto(
   let copy: GeneratedCopyResult;
   try {
     copy = await generateCopy(config, {
-      productName: params.productName,
-      toySizeCm: params.toySizeCm,
+      productName,
+      toySizeCm,
       productKind,
       style: params.style,
       personScale: params.personScale,
@@ -463,7 +561,7 @@ export async function generatePhoto(
     });
   } catch (copyErr) {
     console.warn("Copy generation notice:", copyErr);
-    copy = copyFallback(params.productName, params.toySizeCm, productKind);
+    copy = copyFallback(productName, toySizeCm, productKind);
   }
 
   return {
@@ -471,5 +569,9 @@ export async function generatePhoto(
     productTitle: copy.productTitle,
     sellingLine: copy.sellingLine,
     marketingDescription: copy.marketingDescription,
+    productKind,
+    productName,
+    toySizeCm,
+    ...(kindSwitchedFrom ? { kindSwitchedFrom } : {}),
   };
 }

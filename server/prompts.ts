@@ -1,4 +1,9 @@
-import type { ImageStyle, PersonScale, ProductKind } from "../src/types.js";
+import {
+  STYLE_REF_PROMPT_MAX,
+  type ImageStyle,
+  type PersonScale,
+  type ProductKind,
+} from "../src/types.js";
 
 export interface StudioPromptParams {
   productName: string;
@@ -7,6 +12,7 @@ export interface StudioPromptParams {
   productKind: ProductKind;
   style: ImageStyle;
   personScale: PersonScale;
+  styleRefPrompt?: string;
 }
 
 function isFloral(kind: ProductKind): boolean {
@@ -22,13 +28,13 @@ function buildStyleInstructions(
       return {
         styleInstructions: `
 STYLE 1 — CLEAN CATALOG:
-- Create a crisp, ultra-clean professional e-commerce catalog photograph of flowers or a bouquet.
+- Create a crisp, ultra-clean professional e-commerce catalog photograph of the exact flowers from the reference.
 - Clean pure white or very light neutral studio background (solid #F8F9FA or pure white).
-- The exact flowers from the reference image must be centered, standing naturally (in their wrapping, stems, or vase if present).
-- Soft, professional diffused studio lighting from dual key/fill softboxes.
+- The exact flowers from the reference image must be centered, standing naturally in their original wrapping, stems, or vase if present. Do not change the container.
+- Soft, professional diffused studio lighting from dual key/fill softboxes. Change lighting and background only.
 - Soft, realistic contact shadow on the surface beneath the stems, wrap, or vase.
+- Keep petal color, saturation, and bloom appearance identical to the reference. Do not retouch, beautify, or recalibrate flower color.
 - Razor-sharp petals and foliage with no background distraction, no clutter, no extra decorative props.
-- Enhanced contrast, exposure, and color calibration to commercial florist / retail photography standards.
 - No text, labels, or watermarks on the image.
 `,
         backgroundGuidance:
@@ -61,7 +67,7 @@ STYLE 2 — STYLED PROMO:
 - The EXACT flowers from the uploaded reference photo are the dominant, crisp foreground hero subject.
 - Contextual background: A tasteful florist / botanical setting with soft shallow depth-of-field blur (such as a sunlit linen table, pale marble counter, ceramic vase, or airy flower-shop window light). Do NOT use a children's nursery or playroom.
 - Warm, natural daylight with gentle rim glow on petals and rich ambient atmosphere.
-- Keep the flowers 100% true to original reference in species, bloom count, colors, and arrangement.
+- Keep the flowers 100% identical to the original reference: species, bloom count, petal colors, saturation, and arrangement. Do not restyle or retouch the blooms.
 - Realistic surface reflections and natural cast shadows.
 - COMPOSITION FOR TYPE: Place the flowers in the upper two-thirds of the frame. Leave a clean, uncluttered lower band (about the bottom 22%) with soft falloff and no busy props, so a product name and selling line can sit on the photo.
 - Do NOT render any text, letters, logos, captions, watermarks, or labels in the photograph.
@@ -93,15 +99,16 @@ STYLE 2 — STYLED PROMO:
 STYLE 3 — LUXURY PROMO:
 - Create a premium high-end luxury advertising campaign photo of flowers — composed like a magazine florist ad that will receive elegant product-name typography later.
 - The EXACT flowers from the reference photo are displayed as a prestigious hero piece.
-- Composition: Positioned elegantly in a fine ceramic or glass vase, atop a minimalist architectural podium, travertine stone plinth, or softly draped luxury textured fabric.
-- Premium studio spotlighting with dramatic yet soft directional falloff, subtle warm rim lighting accentuating petal translucency and foliage.
+- Keep the original wrapping, ribbon, stems, or vase from the reference. Do NOT restage into a different vase or rearrange the bouquet.
+- Place that unchanged arrangement in a luxury studio setting: a minimalist architectural podium, travertine stone plinth, or softly draped luxury textured fabric behind/beneath it.
+- Premium studio spotlighting with dramatic yet soft directional falloff, subtle warm rim lighting. Lighting and background only — do not change petal color or bloom appearance.
 - Clean luxury aesthetic, gift-like prestige presentation with rich, deep, refined tonality.
 - Flawless commercial lighting and soft elegant shadows.
 - COMPOSITION FOR TYPE: Keep the flowers in the upper two-thirds. Leave a calm, dark-to-soft lower band (about the bottom 24%) free of objects so a product name can be printed on the image.
 - Do NOT render any text, letters, logos, captions, watermarks, or labels in the photograph.
 `,
       backgroundGuidance:
-        "architectural stone plinth or fine vase, luxury draped fabric, elegant high-end florist studio lighting with open lower third for headline type",
+        "architectural stone plinth, luxury draped fabric, elegant high-end florist studio lighting with open lower third for headline type — original wrapping or vase unchanged",
     };
   }
 
@@ -130,7 +137,8 @@ function hasNumericSize(toySizeCm: string | number | undefined): boolean {
 function buildPersonScaleInstructions(
   personScale: PersonScale,
   toySizeCm: string | number | undefined,
-  floral: boolean
+  floral: boolean,
+  hasSceneLook: boolean
 ): string {
   const subject = floral ? "flowers" : "toy";
   const toyScaleLine = hasNumericSize(toySizeCm)
@@ -162,7 +170,7 @@ ${toyScaleLine}
     return floral
       ? `
 PERSON FOR SIZE REFERENCE:
-- Include realistic adult florist or gift-giver hands gently holding, presenting, or arranging the flowers for clear visual scale comparison.
+- Include realistic adult florist or gift-giver hands gently holding or presenting the flowers for clear visual scale comparison. Do not rearrange, restyle, or alter the blooms.
 - Keep the flowers at a natural, realistic scale relative to the adult hands/body.
 - The flowers must remain the unobstructed, sharp focal hero of the composition.
 `
@@ -171,6 +179,13 @@ PERSON FOR SIZE REFERENCE:
 - Include a realistic adult (hands gently holding or presenting the toy, or standing/sitting naturally beside it) for clear visual scale comparison.
 ${toyAdultScaleLine}
 - The toy must remain the unobstructed, sharp focal hero of the composition.
+`;
+  }
+
+  if (hasSceneLook) {
+    return `
+PERSON FOR SIZE REFERENCE:
+- Follow the SCENE LOOK for whether a person appears. Do not add extra people, hands, or figures beyond that look.
 `;
   }
 
@@ -184,20 +199,22 @@ function buildPreservationRules(floral: boolean): string {
   if (floral) {
     return `
 CRITICAL INSTRUCTION - PRODUCT PRESERVATION:
-You are a world-class professional commercial product photographer and editor specializing in florist and botanical catalog work.
-The uploaded image contains the EXACT product reference flowers.
+You are a world-class professional commercial product photographer specializing in florist and botanical catalog work.
+The uploaded image contains the EXACT product reference flowers. Keep those flowers original.
 
 MOST IMPORTANT RULE:
-The uploaded flowers must ALWAYS be treated as the exact product reference.
+The uploaded flowers must ALWAYS be treated as the exact, unaltered product reference.
 DO NOT CREATE DIFFERENT FLOWERS, A DIFFERENT BOUQUET, OR A TOY.
-PRESERVE 100% ACCURATELY:
+DO NOT improve, beautify, saturate, recolor, retouch, or "enhance" the blooms themselves.
+PRESERVE 100% IDENTICALLY:
 - species and bloom identity
-- exact petal colors, shades, veining, and color distribution
+- exact petal colors, shades, veining, saturation, and color distribution
 - bloom count, size, and how open each flower is
 - stem length, leaf placement, foliage, wrapping, ribbon, or vase if present
 - overall arrangement silhouette and unique character
 
-The purpose is to improve the original product photography and lighting in a professional studio setting, NOT redesign, rearrange, or add extra blooms.
+ONLY lighting, background, and studio setting may change.
+Do NOT redesign, rearrange, add or remove blooms, change the container, or alter flower appearance.
 `;
   }
 
@@ -221,15 +238,73 @@ The purpose is to improve the original product photography and lighting in a pro
 `;
 }
 
+export function buildSubjectClassifyPrompt(): string {
+  return `
+Look only at the uploaded photo. Classify the main product subject.
+
+Return a JSON object with EXACTLY this key:
+- "kind": one of "toy", "flowers", or "other"
+
+Rules:
+- "toy": playthings, figures, dolls, plush, stuffed animals, wooden toys, action figures, toy vehicles. A manufactured toy that happens to look like a flower still counts as toy.
+- "flowers": real flowers, blooms, bouquets, plants, potted flowers, florist arrangements. Not a toy.
+- "other": anything that is neither a toy nor flowers (food, clothing, furniture, electronics, scenery, people-only, animals that are not toys, etc.).
+
+Respond with valid JSON only. No markdown.
+`;
+}
+
+const SCENE_VARIATIONS = [
+  "Slightly raise the camera height.",
+  "Slightly lower the camera height.",
+  "Shift the key light a few degrees to the left.",
+  "Shift the key light a few degrees to the right.",
+  "Soften surface folds or texture slightly.",
+  "Warm the rim light a touch.",
+  "Cool the fill light a touch.",
+];
+
+function pickSceneVariation(): string {
+  const index = Math.floor(Math.random() * SCENE_VARIATIONS.length);
+  return `SCENE VARIATION: ${SCENE_VARIATIONS[index]} Keep the same materials, palette, and lighting mood. Do not copy a previous frame.`;
+}
+
+function buildSceneLookBlock(styleRefPrompt?: string): {
+  sceneBlock: string;
+  backgroundOverride?: string;
+} {
+  const trimmed = styleRefPrompt?.trim().slice(0, STYLE_REF_PROMPT_MAX);
+  if (!trimmed) return { sceneBlock: "" };
+  return {
+    sceneBlock: `
+SCENE LOOK:
+Follow this scene direction for setting, lighting, pose, and composition. Place the exact product from the reference photo into that setting. Do not copy a previous frame.
+${trimmed}
+
+${pickSceneVariation()}
+`,
+    backgroundOverride: trimmed,
+  };
+}
+
 export function buildStudioPrompt(params: StudioPromptParams): string {
-  const { productName, toySizeCm, productDescription, productKind, style, personScale } =
-    params;
+  const {
+    productName,
+    toySizeCm,
+    productDescription,
+    productKind,
+    style,
+    personScale,
+    styleRefPrompt,
+  } = params;
   const floral = isFloral(productKind);
   const { styleInstructions, backgroundGuidance } = buildStyleInstructions(style, floral);
+  const { sceneBlock, backgroundOverride } = buildSceneLookBlock(styleRefPrompt);
   const personScaleInstructions = buildPersonScaleInstructions(
     personScale,
     toySizeCm,
-    floral
+    floral,
+    Boolean(backgroundOverride)
   );
   const subjectLabel = floral ? "flowers / bouquet" : "toy";
   const productLine = floral
@@ -237,17 +312,19 @@ export function buildStudioPrompt(params: StudioPromptParams): string {
     : hasNumericSize(toySizeCm)
       ? `The product is "${productName}" (${toySizeCm} cm tall).`
       : `The product is "${productName}".`;
+  const sceneGuidance = backgroundOverride || backgroundGuidance;
 
   return `
 ${buildPreservationRules(floral)}
 ${productLine}
 
 ${styleInstructions}
+${sceneBlock}
 
 ${personScaleInstructions}
 
 Product Notes: "${productDescription || productName}"
-Overall scene: Photorealistic 8k commercial ${subjectLabel} photo, master studio lighting, authentic textures, ${backgroundGuidance}.
+Overall scene: Photorealistic 8k commercial ${subjectLabel} photo, master studio lighting, authentic textures, ${sceneGuidance}.
 `;
 }
 

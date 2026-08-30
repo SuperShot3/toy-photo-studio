@@ -1,5 +1,5 @@
 import { improveDescription, generatePhoto, HttpError } from "./ai.js";
-import { parseOpenAiImageModel, parseProductKind, sizeCmForProduct } from "../src/types.js";
+import { parseOpenAiImageModel, parseProductKind, STYLE_REF_PROMPT_MAX } from "../src/types.js";
 
 export type JsonBody = Record<string, unknown>;
 
@@ -48,7 +48,11 @@ export async function runImproveDescription(body: JsonBody): Promise<ApiResult> 
   } catch (error: unknown) {
     console.error("Error in /api/improve-description:", error);
     const message = error instanceof Error ? error.message : "Failed to generate improved copy.";
-    return { status: 500, body: { error: message } };
+    const status =
+      error instanceof HttpError && error.status >= 400 && error.status < 600
+        ? error.status
+        : 500;
+    return { status, body: { error: message } };
   }
 }
 
@@ -56,15 +60,13 @@ export async function runGeneratePhoto(body: JsonBody): Promise<ApiResult> {
   try {
     const imageBase64 = asString(body.imageBase64);
     const mimeType = asString(body.mimeType, "image/jpeg");
-    const productKind = parseProductKind(body.productKind);
-    const productName =
-      asString(body.productName).trim() || (productKind === "flowers" ? "Bouquet" : "Toy");
-    const toySizeCm =
-      sizeCmForProduct(productKind, body.toySizeCm as string | number | undefined) ??
-      (productKind === "toy" ? 20 : undefined);
+    const selectedKind = parseProductKind(body.productKind);
+    const productName = asString(body.productName).trim();
+    const toySizeCm = body.toySizeCm as string | number | undefined;
     const productDescription = asString(body.productDescription);
     const style = asString(body.style, "clean-catalog");
     const personScale = asString(body.personScale, "none");
+    const styleRefPrompt = asString(body.styleRefPrompt).trim().slice(0, STYLE_REF_PROMPT_MAX);
     const openaiImageModel = parseOpenAiImageModel(
       body.openaiImageModel ?? body.openaiImageMode
     );
@@ -83,9 +85,10 @@ export async function runGeneratePhoto(body: JsonBody): Promise<ApiResult> {
       productName,
       toySizeCm,
       productDescription,
-      productKind,
+      productKind: selectedKind,
       style: style as "clean-catalog" | "styled-promo" | "luxury-promo",
       personScale: personScale as "none" | "child" | "adult",
+      ...(styleRefPrompt ? { styleRefPrompt } : {}),
       openaiImageModel,
     });
 
@@ -95,10 +98,11 @@ export async function runGeneratePhoto(body: JsonBody): Promise<ApiResult> {
         ...result,
         style,
         personScale,
-        productName,
-        toySizeCm,
-        productKind,
+        productName: result.productName,
+        toySizeCm: result.toySizeCm,
+        productKind: result.productKind,
         openaiImageModel,
+        ...(result.kindSwitchedFrom ? { kindSwitchedFrom: result.kindSwitchedFrom } : {}),
       },
     };
   } catch (error: unknown) {

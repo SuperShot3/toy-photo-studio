@@ -13,11 +13,13 @@ import { SubjectSelector } from './components/SubjectSelector';
 import { ModelSelector } from './components/ModelSelector';
 import { ResultView } from './components/ResultView';
 import { SessionGallery } from './components/SessionGallery';
-import { ApiSettingsPanel } from './components/ApiSettingsPanel';
-import { ImageStyle, PersonScale, ProductKind, GeneratedResult, ImprovedDescriptionResponse, ApiSettings, OpenAiImageModel, parseProductKind, sizeCmForProduct } from './types';
+import { SettingsSheet } from './components/SettingsSheet';
+import { StyleRefManager } from './components/StyleRefManager';
+import { ImageStyle, PersonScale, ProductKind, GeneratedResult, ImprovedDescriptionResponse, ApiSettings, OpenAiImageModel, parseProductKind, sizeCmForProduct, kindSwitchNotice, isPromoImageStyle } from './types';
 import { isPromoStyle } from './utils/promoOverlay';
-import { Sparkles, Loader2, AlertCircle } from 'lucide-react';
+import { Sparkles, Loader2, AlertCircle, Info } from 'lucide-react';
 import { loadApiSettings, saveApiSettings, getActiveApiKey, isApiKeyConfigured } from './utils/apiSettings';
+import { findStyleRef } from './utils/styleRefs';
 import { readApiError, readNetworkError } from './utils/apiError';
 import { normalizeReferenceImage } from './utils/normalizeImage';
 import { getShotPrice } from './utils/generationPricing';
@@ -48,17 +50,30 @@ export default function App() {
   // Style and scale selections
   const [selectedStyle, setSelectedStyle] = useState<ImageStyle>('clean-catalog');
   const [selectedScale, setSelectedScale] = useState<PersonScale>('none');
+  const [selectedStyleRefId, setSelectedStyleRefId] = useState<string | null>(null);
+  const [styleRefsVersion, setStyleRefsVersion] = useState(0);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [styleRefManagerOpen, setStyleRefManagerOpen] = useState(false);
 
   // Generation states
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [generationStep, setGenerationStep] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
+  const [kindNotice, setKindNotice] = useState<string | null>(null);
   const [result, setResult] = useState<GeneratedResult | null>(null);
   const [shots, setShots] = useState<GeneratedResult[]>([]);
 
   const resultRef = useRef<HTMLDivElement>(null);
   const shotsRef = useRef<GeneratedResult[]>([]);
   const shotPrice = getShotPrice(apiSettings.openaiImageModel);
+  const selectedStyleRef = findStyleRef(selectedStyleRefId);
+
+  const handleStyleSelect = (style: ImageStyle) => {
+    setSelectedStyle(style);
+    if (!isPromoImageStyle(style) || selectedStyleRef?.style !== style) {
+      setSelectedStyleRefId(null);
+    }
+  };
 
   shotsRef.current = shots;
 
@@ -107,15 +122,23 @@ export default function App() {
     return trimmed;
   };
 
-  // Handle image selection
+  const applyDetectedKind = (kind: ProductKind, switchedFrom?: ProductKind) => {
+    setProductKind(kind);
+    if (switchedFrom && switchedFrom !== kind) {
+      setKindNotice(kindSwitchNotice(switchedFrom, kind));
+    }
+  };
+
   const handleImageSelected = (base64Url: string, fileMimeType: string) => {
     setImagePreviewUrl(base64Url);
     setMimeType(fileMimeType);
     setError(null);
+    setKindNotice(null);
   };
 
   const handleClearImage = () => {
     setImagePreviewUrl(null);
+    setKindNotice(null);
   };
 
   const handleSelectShot = (shot: GeneratedResult) => {
@@ -163,12 +186,13 @@ export default function App() {
     }
 
     if (!isApiKeyConfigured(apiSettings)) {
-      setError('Please add your OpenAI API key in the settings panel above.');
+      setError('Please add your OpenAI API key in Settings (menu in the header).');
       return;
     }
 
     setIsGenerating(true);
     setError(null);
+    setKindNotice(null);
     setGenerationStep(
       productKind === 'flowers'
         ? 'Analyzing bloom shape, petals & arrangement...'
@@ -203,6 +227,9 @@ export default function App() {
           productKind,
           style: selectedStyle,
           personScale: selectedScale,
+          ...(selectedStyleRef
+            ? { styleRefId: selectedStyleRef.id, styleRefPrompt: selectedStyleRef.prompt }
+            : {}),
           apiKey: getActiveApiKey(apiSettings),
           openaiImageModel: apiSettings.openaiImageModel,
         }),
@@ -215,6 +242,17 @@ export default function App() {
       }
 
       const data = await response.json();
+      const usedKind = parseProductKind(data.productKind ?? productKind);
+      const switchedFrom: ProductKind | undefined =
+        data.kindSwitchedFrom === 'toy' || data.kindSwitchedFrom === 'flowers'
+          ? data.kindSwitchedFrom
+          : undefined;
+
+      if (switchedFrom) {
+        applyDetectedKind(usedKind, switchedFrom);
+      } else {
+        setProductKind(usedKind);
+      }
 
       const newResult: GeneratedResult = {
         id: crypto.randomUUID(),
@@ -223,15 +261,16 @@ export default function App() {
         productTitle: data.productTitle || productName,
         sellingLine:
           data.sellingLine ||
-          (productKind === 'flowers'
+          (usedKind === 'flowers'
             ? 'True-to-life blooms, arranged for gifts and special days.'
             : 'High quality toy crafted for memorable play.'),
         marketingDescription: data.marketingDescription || description,
         style: selectedStyle,
         personScale: selectedScale,
         productName: productName,
-        toySizeCm: sizeCmForProduct(productKind, toySizeCm),
-        productKind,
+        toySizeCm: sizeCmForProduct(usedKind, data.toySizeCm ?? toySizeCm),
+        productKind: usedKind,
+        kindSwitchedFrom: switchedFrom,
         generatedAt: new Date().toISOString(),
       };
 
@@ -256,7 +295,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 font-sans text-slate-800 selection:bg-indigo-500/20">
-      <Header />
+      <Header onOpenSettings={() => setSettingsOpen(true)} />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-8">
         <div className="flex flex-col lg:flex-row gap-6 items-start">
@@ -274,14 +313,26 @@ export default function App() {
               </div>
             </div>
 
-            <ApiSettingsPanel
-              settings={apiSettings}
-              onSettingsChange={setApiSettings}
-            />
+            {!isApiKeyConfigured(apiSettings) && (
+              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-800 leading-relaxed">
+                Add your OpenAI API key in{' '}
+                <button
+                  type="button"
+                  onClick={() => setSettingsOpen(true)}
+                  className="font-bold underline underline-offset-2 cursor-pointer"
+                >
+                  Settings
+                </button>{' '}
+                (menu in the header).
+              </div>
+            )}
 
             <SubjectSelector
               selectedKind={productKind}
-              onKindSelect={setProductKind}
+              onKindSelect={(kind) => {
+                setProductKind(kind);
+                setKindNotice(null);
+              }}
             />
 
             {/* 1. Photo Upload */}
@@ -305,13 +356,21 @@ export default function App() {
               imageBase64={imagePreviewUrl}
               mimeType={mimeType}
               onApplyImprovedCopy={handleApplyImprovedCopy}
+              onDetectedKind={applyDetectedKind}
               apiSettings={apiSettings}
             />
 
             {/* 3. Style Selection */}
             <StyleSelector
+              key={styleRefsVersion}
               selectedStyle={selectedStyle}
-              onStyleSelect={setSelectedStyle}
+              onStyleSelect={handleStyleSelect}
+              selectedRef={
+                selectedStyleRef && isPromoImageStyle(selectedStyle) && selectedStyleRef.style === selectedStyle
+                  ? selectedStyleRef
+                  : null
+              }
+              onSelectRef={(ref) => setSelectedStyleRefId(ref?.id ?? null)}
             />
 
             {/* 4. Scale Reference Option */}
@@ -327,6 +386,16 @@ export default function App() {
                 setApiSettings((current) => ({ ...current, openaiImageModel: model }))
               }
             />
+
+            {kindNotice && (
+              <div className="p-3.5 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-800 text-xs flex items-start gap-2.5">
+                <Info className="w-4 h-4 shrink-0 text-indigo-500 mt-0.5" />
+                <div>
+                  <p className="font-bold">Studio switched</p>
+                  <p className="mt-0.5 text-[11px]">{kindNotice}</p>
+                </div>
+              </div>
+            )}
 
             {/* Error Message */}
             {error && (
@@ -458,6 +527,28 @@ export default function App() {
       <footer className="mt-auto border-t border-slate-200 py-4 text-center text-xs text-slate-400 bg-white">
         <p>PhotoStudioAI</p>
       </footer>
+
+      <SettingsSheet
+        open={settingsOpen}
+        settings={apiSettings}
+        onSettingsChange={setApiSettings}
+        onOpenStyleRefs={() => {
+          setSettingsOpen(false);
+          setStyleRefManagerOpen(true);
+        }}
+        onClose={() => setSettingsOpen(false)}
+      />
+
+      <StyleRefManager
+        open={styleRefManagerOpen}
+        onClose={() => setStyleRefManagerOpen(false)}
+        onRefsChange={() => {
+          setStyleRefsVersion((value) => value + 1);
+          if (selectedStyleRefId && !findStyleRef(selectedStyleRefId)) {
+            setSelectedStyleRefId(null);
+          }
+        }}
+      />
     </div>
   );
 }

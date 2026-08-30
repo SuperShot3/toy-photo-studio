@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Sparkles, Wand2, Loader2, Check, ArrowRight } from 'lucide-react';
-import { ImprovedDescriptionResponse, ApiSettings, ProductKind } from '../types';
+import { ImprovedDescriptionResponse, ApiSettings, ProductKind, kindSwitchNotice } from '../types';
 import { getActiveApiKey, isApiKeyConfigured } from '../utils/apiSettings';
 import { readApiError, readNetworkError } from '../utils/apiError';
 
@@ -16,6 +16,7 @@ interface ProductDetailsFormProps {
   imageBase64: string | null;
   mimeType: string;
   onApplyImprovedCopy: (improved: ImprovedDescriptionResponse) => void;
+  onDetectedKind?: (kind: ProductKind, switchedFrom?: ProductKind) => void;
   apiSettings: ApiSettings;
 }
 
@@ -31,6 +32,7 @@ export const ProductDetailsForm: React.FC<ProductDetailsFormProps> = ({
   imageBase64,
   mimeType,
   onApplyImprovedCopy,
+  onDetectedKind,
   apiSettings,
 }) => {
   const [isImproving, setIsImproving] = useState(false);
@@ -44,7 +46,7 @@ export const ProductDetailsForm: React.FC<ProductDetailsFormProps> = ({
     }
 
     if (!isApiKeyConfigured(apiSettings)) {
-      setImproveError('Please add your OpenAI API key in the settings panel.');
+      setImproveError('Please add your OpenAI API key in Settings (menu in the header).');
       return;
     }
 
@@ -71,6 +73,9 @@ export const ProductDetailsForm: React.FC<ProductDetailsFormProps> = ({
       }
 
       const data: ImprovedDescriptionResponse = await response.json();
+      if (data.productKind) {
+        onDetectedKind?.(data.productKind, data.kindSwitchedFrom);
+      }
       setSuggestion(data);
     } catch (err: unknown) {
       console.error(err);
@@ -211,6 +216,12 @@ export const ProductDetailsForm: React.FC<ProductDetailsFormProps> = ({
               Apply to Form
             </button>
           </div>
+
+          {suggestion.kindSwitchedFrom && suggestion.productKind && (
+            <p className="text-[11px] text-indigo-800 leading-relaxed">
+              {kindSwitchNotice(suggestion.kindSwitchedFrom, suggestion.productKind)}
+            </p>
+          )}
 
           <div className="space-y-1.5 text-xs">
             <div>
