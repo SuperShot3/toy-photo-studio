@@ -45,7 +45,7 @@ export const ResultView: React.FC<ResultViewProps> = ({
       composePromoOverlay({
         imageUrl: result.imageUrl,
         style: result.style,
-        headline: headline.trim() || result.productName || 'Toy',
+        headline: headline.trim() || result.productName || 'Product',
         tagline: tagline.trim(),
         sizeLabel: result.toySizeCm ? `${result.toySizeCm} cm` : '',
       })
@@ -78,11 +78,18 @@ export const ResultView: React.FC<ResultViewProps> = ({
   const handleDownload = () => {
     const link = document.createElement('a');
     link.href = displayImage;
-    const sanitizedTitle = (result.productName || 'toy-studio-photo')
+    const sanitizedTitle = (result.productName || 'studio-photo')
       .toLowerCase()
       .replace(/[^a-z0-9]/g, '-');
     const suffix = promo && overlayOn ? 'promo' : result.style;
-    link.download = `${sanitizedTitle}-${suffix}.png`;
+    const mime = displayImage.match(/^data:(image\/[a-zA-Z0-9.+-]+)/)?.[1] || 'image/png';
+    const ext =
+      mime.includes('jpeg') || mime.includes('jpg')
+        ? 'jpg'
+        : mime.includes('webp')
+          ? 'webp'
+          : 'png';
+    link.download = `${sanitizedTitle}-${suffix}.${ext}`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

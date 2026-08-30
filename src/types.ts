@@ -1,15 +1,35 @@
 export type ImageStyle = 'clean-catalog' | 'styled-promo' | 'luxury-promo';
 export type PersonScale = 'none' | 'child' | 'adult';
-export type AiProvider = 'gemini' | 'openai';
+export type ProductKind = 'toy' | 'flowers';
+
+export function parseProductKind(value: unknown): ProductKind {
+  return value === 'flowers' ? 'flowers' : 'toy';
+}
+
+export const OPENAI_IMAGE_MODELS = [
+  'gpt-image-1-mini',
+  'gpt-image-1',
+  'gpt-image-1.5',
+  'gpt-image-2',
+] as const;
+
+export type OpenAiImageModel = (typeof OPENAI_IMAGE_MODELS)[number];
+
+export const DEFAULT_OPENAI_IMAGE_MODEL: OpenAiImageModel = 'gpt-image-1-mini';
+
+export function parseOpenAiImageModel(value: unknown): OpenAiImageModel {
+  if (value === 'studio' || value === 'gpt-image-1.5') return 'gpt-image-1.5';
+  if (value === 'gpt-image-1') return 'gpt-image-1';
+  if (value === 'gpt-image-2') return 'gpt-image-2';
+  return DEFAULT_OPENAI_IMAGE_MODEL;
+}
 
 export interface ApiSettings {
-  provider: AiProvider;
-  geminiApiKey: string;
   openaiApiKey: string;
+  openaiImageModel: OpenAiImageModel;
 }
 
 export interface AiRequestConfig {
-  provider: AiProvider;
   apiKey: string;
 }
 
@@ -19,10 +39,11 @@ export interface GeneratePhotoRequest {
   productName: string;
   toySizeCm: string | number;
   productDescription?: string;
+  productKind?: ProductKind;
   style: ImageStyle;
   personScale: PersonScale;
-  provider: AiProvider;
   apiKey: string;
+  openaiImageModel?: OpenAiImageModel;
 }
 
 export interface GeneratedResult {
@@ -36,16 +57,17 @@ export interface GeneratedResult {
   personScale: PersonScale;
   productName: string;
   toySizeCm: string | number;
+  productKind?: ProductKind;
   generatedAt: string;
 }
 
 export interface ImproveDescriptionRequest {
   productName: string;
   toySizeCm?: string | number;
+  productKind?: ProductKind;
   roughDescription: string;
   imageBase64?: string;
   mimeType?: string;
-  provider: AiProvider;
   apiKey: string;
 }
 

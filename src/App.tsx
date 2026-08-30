@@ -9,10 +9,12 @@ import { PhotoUploader } from './components/PhotoUploader';
 import { ProductDetailsForm } from './components/ProductDetailsForm';
 import { StyleSelector } from './components/StyleSelector';
 import { ScaleSelector } from './components/ScaleSelector';
+import { SubjectSelector } from './components/SubjectSelector';
+import { ModelSelector } from './components/ModelSelector';
 import { ResultView } from './components/ResultView';
 import { SessionGallery } from './components/SessionGallery';
 import { ApiSettingsPanel } from './components/ApiSettingsPanel';
-import { ImageStyle, PersonScale, GeneratedResult, ImprovedDescriptionResponse, ApiSettings } from './types';
+import { ImageStyle, PersonScale, ProductKind, GeneratedResult, ImprovedDescriptionResponse, ApiSettings, OpenAiImageModel, parseProductKind } from './types';
 import { Sparkles, Loader2, AlertCircle, ShieldCheck, CheckCircle, Zap } from 'lucide-react';
 import { loadApiSettings, saveApiSettings, getActiveApiKey, isApiKeyConfigured } from './utils/apiSettings';
 import { readApiError, readNetworkError } from './utils/apiError';
@@ -38,6 +40,7 @@ export default function App() {
   const [mimeType, setMimeType] = useState<string>('image/jpeg');
   const [productName, setProductName] = useState<string>('');
   const [toySizeCm, setToySizeCm] = useState<string>('25');
+  const [productKind, setProductKind] = useState<ProductKind>('toy');
   const [description, setDescription] = useState<string>('');
 
   // Style and scale selections
@@ -53,7 +56,7 @@ export default function App() {
 
   const resultRef = useRef<HTMLDivElement>(null);
   const shotsRef = useRef<GeneratedResult[]>([]);
-  const shotPrice = getShotPrice(apiSettings.provider);
+  const shotPrice = getShotPrice(apiSettings.openaiImageModel);
 
   shotsRef.current = shots;
 
@@ -86,6 +89,7 @@ export default function App() {
     setMimeType(mimeFromDataUrl(shot.originalImageUrl));
     setProductName(shot.productName);
     setToySizeCm(String(shot.toySizeCm));
+    setProductKind(parseProductKind(shot.productKind));
     setDescription(shot.marketingDescription);
     setSelectedStyle(shot.style);
     setSelectedScale(shot.personScale);
@@ -142,23 +146,31 @@ export default function App() {
   // Main Generate Image Action
   const handleGenerateImage = async () => {
     if (!imagePreviewUrl) {
-      setError('Please upload a toy photo before generating.');
+      setError(productKind === 'flowers'
+        ? 'Please upload a flower photo before generating.'
+        : 'Please upload a toy photo before generating.');
       return;
     }
 
     if (!productName.trim()) {
-      setError('Please enter a product name for your toy.');
+      setError(productKind === 'flowers'
+        ? 'Please enter a product name for your flowers.'
+        : 'Please enter a product name for your toy.');
       return;
     }
 
     if (!isApiKeyConfigured(apiSettings)) {
-      setError(`Please add your ${apiSettings.provider === 'openai' ? 'OpenAI' : 'Gemini'} API key in the settings panel above.`);
+      setError('Please add your OpenAI API key in the settings panel above.');
       return;
     }
 
     setIsGenerating(true);
     setError(null);
-    setGenerationStep('Analyzing toy features, materials & proportions...');
+    setGenerationStep(
+      productKind === 'flowers'
+        ? 'Analyzing bloom shape, petals & arrangement...'
+        : 'Analyzing toy features, materials & proportions...'
+    );
 
     // Progress animation timers for user feedback
     const t1 = setTimeout(() => {
@@ -166,7 +178,11 @@ export default function App() {
     }, 2000);
 
     const t2 = setTimeout(() => {
-      setGenerationStep('Rendering e-commerce studio shot with exact toy preservation...');
+      setGenerationStep(
+        productKind === 'flowers'
+          ? 'Rendering e-commerce studio shot with exact floral preservation...'
+          : 'Rendering e-commerce studio shot with exact toy preservation...'
+      );
     }, 4500);
 
     try {
@@ -179,10 +195,11 @@ export default function App() {
           productName: productName.trim(),
           toySizeCm: toySizeCm || '20',
           productDescription: description.trim(),
+          productKind,
           style: selectedStyle,
           personScale: selectedScale,
-          provider: apiSettings.provider,
           apiKey: getActiveApiKey(apiSettings),
+          openaiImageModel: apiSettings.openaiImageModel,
         }),
       });
 
@@ -199,12 +216,17 @@ export default function App() {
         imageUrl: data.imageUrl,
         originalImageUrl: imagePreviewUrl,
         productTitle: data.productTitle || productName,
-        sellingLine: data.sellingLine || 'High quality toy crafted for memorable play.',
+        sellingLine:
+          data.sellingLine ||
+          (productKind === 'flowers'
+            ? 'True-to-life blooms, arranged for gifts and special days.'
+            : 'High quality toy crafted for memorable play.'),
         marketingDescription: data.marketingDescription || description,
         style: selectedStyle,
         personScale: selectedScale,
         productName: productName,
         toySizeCm: toySizeCm,
+        productKind,
         generatedAt: new Date().toISOString(),
       };
 
@@ -252,11 +274,17 @@ export default function App() {
               onSettingsChange={setApiSettings}
             />
 
+            <SubjectSelector
+              selectedKind={productKind}
+              onKindSelect={setProductKind}
+            />
+
             {/* 1. Photo Upload */}
             <PhotoUploader
               imagePreviewUrl={imagePreviewUrl}
               onImageSelected={handleImageSelected}
               onClearImage={handleClearImage}
+              productKind={productKind}
             />
 
             {/* 2. Product Details */}
@@ -265,6 +293,7 @@ export default function App() {
               onProductNameChange={setProductName}
               toySizeCm={toySizeCm}
               onToySizeCmChange={setToySizeCm}
+              productKind={productKind}
               description={description}
               onDescriptionChange={setDescription}
               imageBase64={imagePreviewUrl}
@@ -284,6 +313,13 @@ export default function App() {
               selectedScale={selectedScale}
               onScaleSelect={setSelectedScale}
               toySizeCm={toySizeCm}
+            />
+
+            <ModelSelector
+              selectedModel={apiSettings.openaiImageModel}
+              onModelSelect={(model: OpenAiImageModel) =>
+                setApiSettings((current) => ({ ...current, openaiImageModel: model }))
+              }
             />
 
             {/* Error Message */}
@@ -338,10 +374,8 @@ export default function App() {
 
               <p className="text-center text-[11px] text-slate-400 mt-2 font-medium">
                 {!imagePreviewUrl
-                  ? `Upload a toy photo to start · ${shotPrice.perImage}`
-                  : `${shotPrice.perImage} · ${shotPrice.model} · billed to your ${
-                      apiSettings.provider === 'openai' ? 'OpenAI' : 'Gemini'
-                    } key`}
+                  ? `Upload a ${productKind === 'flowers' ? 'flower' : 'toy'} photo to start · ${shotPrice.perImage}`
+                  : `${shotPrice.perImage} · ${shotPrice.model} · billed to your OpenAI key`}
               </p>
             </div>
           </section>
@@ -394,7 +428,7 @@ export default function App() {
                     Studio Photo Preview Canvas
                   </h3>
                   <p className="text-xs text-slate-500 leading-relaxed">
-                    Upload a toy snapshot on the left, pick your photography style, and click <span className="font-semibold text-indigo-600">Generate Professional Shot</span> to get clean catalog and promo images.
+                    Upload a {productKind === 'flowers' ? 'flower' : 'toy'} snapshot on the left, pick your photography style, and click <span className="font-semibold text-indigo-600">Generate Professional Shot</span> to get clean catalog and promo images.
                   </p>
                   {(selectedStyle === 'styled-promo' || selectedStyle === 'luxury-promo') && (
                     <p className="text-[11px] text-slate-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 leading-relaxed">
@@ -406,7 +440,7 @@ export default function App() {
                 {imagePreviewUrl && (
                   <div className="pt-2 flex items-center gap-2 text-xs font-semibold text-slate-600 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
                     <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                    Photo ready for "{productName || 'Toy'}" • Click Generate to render
+                    Photo ready for "{productName || (productKind === 'flowers' ? 'Bouquet' : 'Toy')}" • Click Generate to render
                   </div>
                 )}
               </div>
@@ -432,7 +466,7 @@ export default function App() {
       </main>
 
       <footer className="mt-auto border-t border-slate-200 py-4 text-center text-xs text-slate-400 bg-white">
-        <p>Toy Photo Studio • Sleek Interface</p>
+        <p>PhotoStudioAI • Toys and flowers</p>
       </footer>
     </div>
   );

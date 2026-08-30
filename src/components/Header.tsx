@@ -12,14 +12,14 @@ export const Header: React.FC = () => {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-lg sm:text-xl font-bold tracking-tight text-slate-900 font-sans">
-                Toy Photo Studio
+                PhotoStudioAI
               </h1>
               <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full uppercase tracking-wider border border-slate-200/60">
                 MVP v1.0
               </span>
             </div>
             <p className="text-xs text-slate-500 hidden md:block">
-              Turn ordinary phone snapshots into studio product images
+              Turn ordinary phone snapshots of toys or flowers into studio product images
             </p>
           </div>
         </div>

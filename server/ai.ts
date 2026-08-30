@@ -1,4 +1,3 @@
-import { GoogleGenAI } from "@google/genai";
 import OpenAI, { toFile } from "openai";
 import {
   buildCopyPrompt,
@@ -9,39 +8,27 @@ import {
   parseJsonFromText,
   StudioPromptParams,
 } from "./prompts";
-import type { ImageStyle, PersonScale } from "../src/types";
-
-export type AiProvider = "gemini" | "openai";
+import {
+  parseOpenAiImageModel,
+  parseProductKind,
+  type ImageStyle,
+  type OpenAiImageModel,
+  type PersonScale,
+  type ProductKind,
+} from "../src/types";
 
 export interface AiConfig {
-  provider: AiProvider;
   apiKey: string;
 }
 
 function resolveApiKey(config: AiConfig): string {
   const key = config.apiKey?.trim() || "";
   if (!key) {
-    const envKey =
-      config.provider === "gemini"
-        ? process.env.GEMINI_API_KEY
-        : process.env.OPENAI_API_KEY;
+    const envKey = process.env.OPENAI_API_KEY;
     if (envKey?.trim()) return envKey.trim();
-    throw new Error(
-      `No ${config.provider === "gemini" ? "Gemini" : "OpenAI"} API key provided. Add it in the app settings panel.`
-    );
+    throw new Error("No OpenAI API key provided. Add it in the app settings panel.");
   }
   return key;
-}
-
-function getGeminiClient(apiKey: string): GoogleGenAI {
-  return new GoogleGenAI({
-    apiKey,
-    httpOptions: {
-      headers: {
-        "User-Agent": "aistudio-build",
-      },
-    },
-  });
 }
 
 function getOpenAIClient(apiKey: string): OpenAI {
@@ -123,73 +110,36 @@ function decodeReferenceImage(
   return { cleanBase64: payload, mimeType: mime, buffer };
 }
 
-type GeminiPart = {
-  thought?: boolean;
-  inlineData?: { data?: string; mimeType?: string };
-};
-
-function extractGeminiImage(response: {
-  candidates?: Array<{ content?: { parts?: GeminiPart[] } }>;
-}): string | null {
-  const parts = response.candidates?.[0]?.content?.parts || [];
-  for (let i = parts.length - 1; i >= 0; i--) {
-    const part = parts[i];
-    if (part.thought) continue;
-    if (part.inlineData?.data) {
-      const outMime = part.inlineData.mimeType || "image/png";
-      return `data:${outMime};base64,${part.inlineData.data}`;
-    }
-  }
-  return null;
-}
-
 export async function improveDescription(
   config: AiConfig,
   params: {
     productName?: string;
     toySizeCm?: string | number;
+    productKind?: ProductKind;
     roughDescription?: string;
     imageBase64?: string;
     mimeType?: string;
   }
 ): Promise<ImprovedCopyResult> {
   const apiKey = resolveApiKey(config);
-  const fallback: ImprovedCopyResult = {
-    productTitle: params.productName || "Handcrafted Classic Toy",
-    sellingLine: "Delightful quality toy designed for joyful play and cherished memories.",
-    productDescription:
-      params.roughDescription ||
-      "A beautifully crafted toy made with care, offering endless imagination and tactile delight for children and collectors alike.",
-  };
+  const floral = parseProductKind(params.productKind) === "flowers";
+  const fallback: ImprovedCopyResult = floral
+    ? {
+        productTitle: params.productName || "Fresh Garden Bouquet",
+        sellingLine: "A hand-tied arrangement of true-to-life blooms, ready to gift or display.",
+        productDescription:
+          params.roughDescription ||
+          "A carefully arranged bouquet with vivid color and natural foliage, photographed as it will look on arrival.",
+      }
+    : {
+        productTitle: params.productName || "Handcrafted Classic Toy",
+        sellingLine: "Delightful quality toy designed for joyful play and cherished memories.",
+        productDescription:
+          params.roughDescription ||
+          "A beautifully crafted toy made with care, offering endless imagination and tactile delight for children and collectors alike.",
+      };
 
   const promptText = buildImproveDescriptionPrompt(params);
-
-  if (config.provider === "gemini") {
-    const ai = getGeminiClient(apiKey);
-    const parts: Array<{ text?: string; inlineData?: { data: string; mimeType: string } }> = [];
-
-    if (params.imageBase64) {
-      const decoded = decodeReferenceImage(params.imageBase64, params.mimeType || "image/jpeg");
-      parts.push({
-        inlineData: {
-          data: decoded.cleanBase64,
-          mimeType: decoded.mimeType,
-        },
-      });
-    }
-
-    parts.push({ text: promptText });
-
-    const response = await ai.models.generateContent({
-      model: "gemini-3.7-flash",
-      contents: { parts },
-      config: {
-        responseMimeType: "application/json",
-      },
-    });
-
-    return parseJsonFromText(response.text || "{}", fallback);
-  }
 
   const openai = getOpenAIClient(apiKey);
   const userContent: OpenAI.Chat.Completions.ChatCompletionContentPart[] = [];
@@ -214,120 +164,59 @@ export async function improveDescription(
   return parseJsonFromText(rawText, fallback);
 }
 
-async function generateImageGemini(
-  apiKey: string,
-  cleanBase64: string,
-  mimeType: string,
-  masterPrompt: string,
-  personScale: PersonScale
-): Promise<string> {
-  const ai = getGeminiClient(apiKey);
-  const models = ["gemini-3.1-flash-image", "gemini-3.1-flash-lite-image"] as const;
-  let lastError: unknown;
-
-  for (const model of models) {
-    try {
-      const imgResponse = await ai.models.generateContent({
-        model,
-        contents: {
-          parts: [
-            {
-              inlineData: {
-                data: cleanBase64,
-                mimeType: mimeType || "image/jpeg",
-              },
-            },
-            { text: masterPrompt },
-          ],
-        },
-        config: {
-          responseModalities: ["TEXT", "IMAGE"],
-          imageConfig: {
-            aspectRatio: "1:1",
-            imageSize: "1K",
-            ...(personScale !== "none" ? { personGeneration: "ALLOW_ALL" } : {}),
-          },
-        },
-      });
-
-      const imageUrl = extractGeminiImage(imgResponse);
-      if (imageUrl) return imageUrl;
-
-      console.warn(`${model} returned no image payload.`);
-    } catch (imgError: unknown) {
-      lastError = imgError;
-      console.warn(
-        `${model} attempt error:`,
-        imgError instanceof Error ? imgError.message : String(imgError)
-      );
-    }
-  }
-
-  throw new Error(
-    extractErrorMessage(
-      lastError,
-      "Gemini did not return an image. Please try again with a clear JPEG or PNG photo."
-    )
-  );
+function supportsInputFidelity(model: OpenAiImageModel): boolean {
+  return model === "gpt-image-1" || model === "gpt-image-1.5";
 }
 
 async function generateImageOpenAI(
   apiKey: string,
   buffer: Buffer,
   mimeType: string,
-  masterPrompt: string
+  masterPrompt: string,
+  model: OpenAiImageModel
 ): Promise<string> {
   const openai = getOpenAIClient(apiKey);
   const ext = extensionForMime(mimeType);
-  const models = ["gpt-image-1.5", "gpt-image-1"] as const;
-  let lastError: unknown;
 
-  for (const model of models) {
-    try {
-      const imageFile = await toFile(buffer, `toy.${ext}`, { type: mimeType || "image/jpeg" });
-      const response = await openai.images.edit({
-        model,
-        image: imageFile,
-        prompt: masterPrompt,
-        size: "1024x1024",
-        input_fidelity: "high",
-        quality: "medium",
-        output_format: "png",
-      });
+  try {
+    const imageFile = await toFile(buffer, `reference.${ext}`, { type: mimeType || "image/jpeg" });
+    const response = await openai.images.edit({
+      model,
+      image: imageFile,
+      prompt: masterPrompt,
+      size: "1024x1024",
+      quality: "medium",
+      output_format: "jpeg",
+      output_compression: 85,
+      ...(supportsInputFidelity(model) ? { input_fidelity: "low" as const } : {}),
+    });
 
-      const b64 = response.data?.[0]?.b64_json;
-      if (b64) {
-        return `data:image/png;base64,${b64}`;
-      }
-
-      const url = response.data?.[0]?.url;
-      if (url) {
-        const imageResponse = await fetch(url);
-        if (!imageResponse.ok) {
-          throw new Error("Failed to download generated image from OpenAI.");
-        }
-        const arrayBuffer = await imageResponse.arrayBuffer();
-        const outB64 = Buffer.from(arrayBuffer).toString("base64");
-        const contentType = imageResponse.headers.get("content-type") || "image/png";
-        return `data:${contentType};base64,${outB64}`;
-      }
-
-      console.warn(`${model} returned no image payload.`);
-    } catch (imgError: unknown) {
-      lastError = imgError;
-      console.warn(
-        `${model} attempt error:`,
-        imgError instanceof Error ? imgError.message : String(imgError)
-      );
+    const b64 = response.data?.[0]?.b64_json;
+    if (b64) {
+      return `data:image/jpeg;base64,${b64}`;
     }
-  }
 
-  throw new Error(
-    extractErrorMessage(
-      lastError,
-      "OpenAI did not return an image. Please try again with a clear JPEG or PNG photo."
-    )
-  );
+    const url = response.data?.[0]?.url;
+    if (url) {
+      const imageResponse = await fetch(url);
+      if (!imageResponse.ok) {
+        throw new Error("Failed to download generated image from OpenAI.");
+      }
+      const arrayBuffer = await imageResponse.arrayBuffer();
+      const outB64 = Buffer.from(arrayBuffer).toString("base64");
+      const contentType = imageResponse.headers.get("content-type") || "image/jpeg";
+      return `data:${contentType};base64,${outB64}`;
+    }
+
+    throw new Error("OpenAI did not return an image. Please try again with a clear JPEG or PNG photo.");
+  } catch (imgError: unknown) {
+    throw new Error(
+      extractErrorMessage(
+        imgError,
+        "OpenAI did not return an image. Please try again with a clear JPEG or PNG photo."
+      )
+    );
+  }
 }
 
 async function generateCopy(
@@ -335,37 +224,27 @@ async function generateCopy(
   params: {
     productName: string;
     toySizeCm: string | number;
+    productKind?: ProductKind;
     style: ImageStyle;
     personScale: PersonScale;
     productDescription: string;
   }
 ): Promise<GeneratedCopyResult> {
   const apiKey = resolveApiKey(config);
-  const fallback: GeneratedCopyResult = {
-    productTitle: params.productName || "Handcrafted Premium Toy",
-    sellingLine: "Capture hearts with timeless charm and irresistible playtime quality.",
-    marketingDescription: `Presenting the ${params.productName} (${params.toySizeCm} cm). Lovingly crafted with premium attention to detail, perfect for imaginative play or as a cherished keepsake.`,
-  };
+  const floral = parseProductKind(params.productKind) === "flowers";
+  const fallback: GeneratedCopyResult = floral
+    ? {
+        productTitle: params.productName || "Fresh Garden Bouquet",
+        sellingLine: "True-to-life blooms, arranged for gifts, tables, and special days.",
+        marketingDescription: `Presenting ${params.productName} (${params.toySizeCm} cm). A studio-ready floral arrangement with natural color, foliage, and gift appeal.`,
+      }
+    : {
+        productTitle: params.productName || "Handcrafted Premium Toy",
+        sellingLine: "Capture hearts with timeless charm and irresistible playtime quality.",
+        marketingDescription: `Presenting the ${params.productName} (${params.toySizeCm} cm). Lovingly crafted with premium attention to detail, perfect for imaginative play or as a cherished keepsake.`,
+      };
 
   const copyPrompt = buildCopyPrompt(params);
-
-  if (config.provider === "gemini") {
-    const ai = getGeminiClient(apiKey);
-    const copyResponse = await ai.models.generateContent({
-      model: "gemini-3.7-flash",
-      contents: copyPrompt,
-      config: {
-        responseMimeType: "application/json",
-      },
-    });
-
-    const copyJson = parseJsonFromText<Partial<GeneratedCopyResult>>(copyResponse.text || "{}", {});
-    return {
-      productTitle: copyJson.productTitle || fallback.productTitle,
-      sellingLine: copyJson.sellingLine || fallback.sellingLine,
-      marketingDescription: copyJson.marketingDescription || fallback.marketingDescription,
-    };
-  }
 
   const openai = getOpenAIClient(apiKey);
   const response = await openai.chat.completions.create({
@@ -386,6 +265,25 @@ async function generateCopy(
   };
 }
 
+function copyFallback(
+  productName: string,
+  toySizeCm: string | number,
+  productKind: ProductKind
+): GeneratedCopyResult {
+  if (parseProductKind(productKind) === "flowers") {
+    return {
+      productTitle: productName || "Fresh Garden Bouquet",
+      sellingLine: "True-to-life blooms, arranged for gifts, tables, and special days.",
+      marketingDescription: `Presenting ${productName} (${toySizeCm} cm). A studio-ready floral arrangement with natural color, foliage, and gift appeal.`,
+    };
+  }
+  return {
+    productTitle: productName || "Handcrafted Premium Toy",
+    sellingLine: "Capture hearts with timeless charm and irresistible playtime quality.",
+    marketingDescription: `Presenting the ${productName} (${toySizeCm} cm). Lovingly crafted with premium attention to detail, perfect for imaginative play or as a cherished keepsake.`,
+  };
+}
+
 export async function generatePhoto(
   config: AiConfig,
   params: {
@@ -394,8 +292,10 @@ export async function generatePhoto(
     productName: string;
     toySizeCm: string | number;
     productDescription: string;
+    productKind?: ProductKind;
     style: ImageStyle;
     personScale: PersonScale;
+    openaiImageModel?: OpenAiImageModel;
   }
 ): Promise<{
   imageUrl: string;
@@ -406,10 +306,12 @@ export async function generatePhoto(
   const apiKey = resolveApiKey(config);
   const decoded = decodeReferenceImage(params.imageBase64, params.mimeType);
 
+  const productKind = parseProductKind(params.productKind);
   const promptParams: StudioPromptParams = {
     productName: params.productName,
     toySizeCm: params.toySizeCm,
     productDescription: params.productDescription,
+    productKind,
     style: params.style,
     personScale: params.personScale,
   };
@@ -418,16 +320,13 @@ export async function generatePhoto(
 
   let imageUrl: string;
   try {
-    imageUrl =
-      config.provider === "gemini"
-        ? await generateImageGemini(
-            apiKey,
-            decoded.cleanBase64,
-            decoded.mimeType,
-            masterPrompt,
-            params.personScale
-          )
-        : await generateImageOpenAI(apiKey, decoded.buffer, decoded.mimeType, masterPrompt);
+    imageUrl = await generateImageOpenAI(
+      apiKey,
+      decoded.buffer,
+      decoded.mimeType,
+      masterPrompt,
+      parseOpenAiImageModel(params.openaiImageModel)
+    );
   } catch (imageErr) {
     throw new Error(
       extractErrorMessage(imageErr, "Failed to generate a studio photo. Please try again.")
@@ -439,17 +338,14 @@ export async function generatePhoto(
     copy = await generateCopy(config, {
       productName: params.productName,
       toySizeCm: params.toySizeCm,
+      productKind,
       style: params.style,
       personScale: params.personScale,
       productDescription: params.productDescription,
     });
   } catch (copyErr) {
     console.warn("Copy generation notice:", copyErr);
-    copy = {
-      productTitle: params.productName || "Handcrafted Premium Toy",
-      sellingLine: "Capture hearts with timeless charm and irresistible playtime quality.",
-      marketingDescription: `Presenting the ${params.productName} (${params.toySizeCm} cm). Lovingly crafted with premium attention to detail, perfect for imaginative play or as a cherished keepsake.`,
-    };
+    copy = copyFallback(params.productName, params.toySizeCm, productKind);
   }
 
   return {

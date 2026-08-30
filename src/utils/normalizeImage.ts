@@ -1,4 +1,4 @@
-const MAX_EDGE = 1536;
+const MAX_EDGE = 1024;
 
 export async function normalizeReferenceImage(
   dataUrl: string

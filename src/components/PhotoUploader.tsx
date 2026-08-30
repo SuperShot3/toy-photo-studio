@@ -1,17 +1,20 @@
 import React, { useRef, useState } from 'react';
 import { UploadCloud, Image as ImageIcon, X, RefreshCw, Loader2 } from 'lucide-react';
+import { ProductKind } from '../types';
 import { normalizeReferenceImage } from '../utils/normalizeImage';
 
 interface PhotoUploaderProps {
   imagePreviewUrl: string | null;
   onImageSelected: (base64Url: string, mimeType: string) => void;
   onClearImage: () => void;
+  productKind?: ProductKind;
 }
 
 export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
   imagePreviewUrl,
   onImageSelected,
   onClearImage,
+  productKind = 'toy',
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -76,7 +79,7 @@ export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
     <div className="space-y-3.5">
       <div className="flex items-center justify-between">
         <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-          1. Toy Photo Reference <span className="text-indigo-600">*</span>
+          1. {productKind === 'flowers' ? 'Flower' : 'Toy'} Photo Reference <span className="text-indigo-600">*</span>
         </label>
           {imagePreviewUrl && (
           <button
@@ -115,7 +118,7 @@ export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
           <div className="aspect-square sm:aspect-16/10 max-h-[300px] w-full flex items-center justify-center p-3">
             <img
               src={imagePreviewUrl}
-              alt="Uploaded toy product"
+              alt={productKind === 'flowers' ? 'Uploaded flower product' : 'Uploaded toy product'}
               className="max-h-full max-w-full object-contain rounded-lg drop-shadow-sm"
               referrerPolicy="no-referrer"
             />
@@ -151,7 +154,7 @@ export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
             <UploadCloud className="w-5 h-5" />
           </div>
           <h3 className="text-sm font-semibold text-slate-800 mb-0.5">
-            Click or drag & drop toy photo
+            Click or drag & drop {productKind === 'flowers' ? 'flower' : 'toy'} photo
           </h3>
           <p className="text-xs text-slate-400 mb-3 max-w-xs">
             Any clear snapshot on phone, desk, or white background

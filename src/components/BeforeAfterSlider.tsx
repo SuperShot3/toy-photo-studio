@@ -158,9 +158,9 @@ export const BeforeAfterSlider: React.FC<BeforeAfterSliderProps> = ({
               className="max-h-full max-w-full object-contain"
               referrerPolicy="no-referrer"
             />
-            <span className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-emerald-500 text-white text-[9px] font-bold uppercase tracking-wide flex items-center gap-1">
+            <span className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-emerald-500 text-white text-[9px] font-bold tracking-wide flex items-center gap-1">
               <Sparkles className="w-2.5 h-2.5" />
-              Studio AI
+              PhotoStudioAI
             </span>
           </div>
         </div>

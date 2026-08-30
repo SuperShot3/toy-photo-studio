@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { KeyRound, ChevronDown, ChevronUp, Eye, EyeOff, CheckCircle2, AlertCircle } from 'lucide-react';
-import { ApiSettings, AiProvider } from '../types';
-import { getActiveApiKey, isApiKeyConfigured, providerLabel } from '../utils/apiSettings';
-import { getShotPrice } from '../utils/generationPricing';
+import { ApiSettings } from '../types';
+import { getActiveApiKey, isApiKeyConfigured } from '../utils/apiSettings';
 
 interface ApiSettingsPanelProps {
   settings: ApiSettings;
@@ -14,39 +13,25 @@ export const ApiSettingsPanel: React.FC<ApiSettingsPanelProps> = ({
   onSettingsChange,
 }) => {
   const [isOpen, setIsOpen] = useState(() => !isApiKeyConfigured(settings));
-  const [showGeminiKey, setShowGeminiKey] = useState(false);
   const [showOpenaiKey, setShowOpenaiKey] = useState(false);
   const [openaiDraft, setOpenaiDraft] = useState(settings.openaiApiKey);
-  const [geminiDraft, setGeminiDraft] = useState(settings.geminiApiKey);
 
   useEffect(() => {
     setOpenaiDraft(settings.openaiApiKey);
-    setGeminiDraft(settings.geminiApiKey);
-  }, [settings.openaiApiKey, settings.geminiApiKey]);
+  }, [settings.openaiApiKey]);
 
   const configured = isApiKeyConfigured(settings);
   const activeKey = getActiveApiKey(settings);
   const draftSettings: ApiSettings = {
     ...settings,
     openaiApiKey: openaiDraft,
-    geminiApiKey: geminiDraft,
   };
-  const isDirty =
-    openaiDraft !== settings.openaiApiKey || geminiDraft !== settings.geminiApiKey;
+  const isDirty = openaiDraft !== settings.openaiApiKey;
   const draftHasActiveKey = isApiKeyConfigured(draftSettings);
-
-  const update = (patch: Partial<ApiSettings>) => {
-    onSettingsChange({ ...settings, ...patch });
-  };
-
-  const handleProviderChange = (provider: AiProvider) => {
-    update({ provider });
-  };
 
   const handleSave = () => {
     if (!isDirty && !draftHasActiveKey) return;
     onSettingsChange(draftSettings);
-    setShowGeminiKey(false);
     setShowOpenaiKey(false);
     if (isApiKeyConfigured(draftSettings)) {
       setIsOpen(false);
@@ -64,10 +49,10 @@ export const ApiSettingsPanel: React.FC<ApiSettingsPanelProps> = ({
           <KeyRound className="w-4 h-4 text-indigo-600" />
           <div>
             <p className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
-              AI Provider & API Key
+              OpenAI API Key
             </p>
             <p className="text-[10px] text-slate-500">
-              {providerLabel(settings.provider)}
+              ChatGPT (OpenAI)
               {configured ? ' • Key saved' : ' • Key required'}
             </p>
           </div>
@@ -90,101 +75,40 @@ export const ApiSettingsPanel: React.FC<ApiSettingsPanelProps> = ({
         <div className="px-3.5 pb-3.5 space-y-3 border-t border-slate-200/80 pt-3">
           <div>
             <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">
-              Choose Provider
+              OpenAI API Key
             </label>
-            <div className="grid grid-cols-2 gap-2">
-              {(['openai', 'gemini'] as AiProvider[]).map((provider) => {
-                const selected = settings.provider === provider;
-                return (
-                  <button
-                    key={provider}
-                    type="button"
-                    onClick={() => handleProviderChange(provider)}
-                    className={`px-2.5 py-2 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${
-                      selected
-                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                        : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'
-                    }`}
-                  >
-                    <span className="block">{provider === 'openai' ? 'ChatGPT' : 'Gemini'}</span>
-                    <span className={`block text-[10px] font-semibold tabular-nums ${selected ? 'text-white/80' : 'text-slate-400'}`}>
-                      {getShotPrice(provider).perImage}
-                    </span>
-                  </button>
-                );
-              })}
+            <div className="relative">
+              <input
+                type={showOpenaiKey ? 'text' : 'password'}
+                value={openaiDraft}
+                onChange={(e) => setOpenaiDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleSave();
+                  }
+                }}
+                placeholder="sk-..."
+                className="w-full px-3 py-2 pr-10 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none font-mono"
+              />
+              <button
+                type="button"
+                onClick={() => setShowOpenaiKey((v) => !v)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
+                aria-label={showOpenaiKey ? 'Hide API key' : 'Show API key'}
+              >
+                {showOpenaiKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              </button>
             </div>
+            <p className="text-[10px] text-slate-400 mt-1.5">
+              Photos use the model you pick below Generate. Copy uses gpt-4o-mini. Get a key at
+              platform.openai.com
+            </p>
           </div>
-
-          {settings.provider === 'openai' ? (
-            <div>
-              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">
-                OpenAI API Key
-              </label>
-              <div className="relative">
-                <input
-                  type={showOpenaiKey ? 'text' : 'password'}
-                  value={openaiDraft}
-                  onChange={(e) => setOpenaiDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleSave();
-                    }
-                  }}
-                  placeholder="sk-..."
-                  className="w-full px-3 py-2 pr-10 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none font-mono"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowOpenaiKey((v) => !v)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
-                  aria-label={showOpenaiKey ? 'Hide API key' : 'Show API key'}
-                >
-                  {showOpenaiKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                </button>
-              </div>
-              <p className="text-[10px] text-slate-400 mt-1.5">
-                Uses gpt-image-1.5 for photos and gpt-4o-mini for copy. Get a key at platform.openai.com
-              </p>
-            </div>
-          ) : (
-            <div>
-              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">
-                Gemini API Key
-              </label>
-              <div className="relative">
-                <input
-                  type={showGeminiKey ? 'text' : 'password'}
-                  value={geminiDraft}
-                  onChange={(e) => setGeminiDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleSave();
-                    }
-                  }}
-                  placeholder="AIza..."
-                  className="w-full px-3 py-2 pr-10 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none font-mono"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowGeminiKey((v) => !v)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
-                  aria-label={showGeminiKey ? 'Hide API key' : 'Show API key'}
-                >
-                  {showGeminiKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                </button>
-              </div>
-              <p className="text-[10px] text-slate-400 mt-1.5">
-                Uses Gemini image + flash models. Get a key at aistudio.google.com
-              </p>
-            </div>
-          )}
 
           {!draftHasActiveKey && (
             <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-[10px] text-amber-800">
-              Add your {settings.provider === 'openai' ? 'OpenAI' : 'Gemini'} API key above, then click Save.
+              Add your OpenAI API key above, then click Save.
             </div>
           )}
 

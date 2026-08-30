@@ -16,7 +16,7 @@ export const STYLE_OPTIONS: StyleOption[] = [
     name: 'Styled Promo',
     tagline: 'Warm Commercial Lifestyle',
     badge: 'Name on photo',
-    description: 'Cozy, sunlit nursery or wooden playroom setting with the product name and a selling line printed on the photo — ready to post or sell.',
+    description: 'Lifestyle setting with the product name and a selling line printed on the photo — ready to post or sell.',
     bgPreview: 'from-amber-50 to-orange-50/50 border-amber-200/80',
     idealFor: 'Instagram, Pinterest, email promos, hero banners',
     iconName: 'Sparkles',
@@ -28,7 +28,7 @@ export const STYLE_OPTIONS: StyleOption[] = [
     badge: 'Named gift look',
     description: 'Stone pedestal, draped textures, and dramatic rim light, with elegant product-name type printed on the image like a magazine ad.',
     bgPreview: 'from-stone-900/5 to-amber-950/10 border-stone-300',
-    idealFor: 'Collector toys, artisan gifts, luxury brand showcases',
+    idealFor: 'Gifts, artisan pieces, luxury brand showcases',
     iconName: 'Crown',
   },
 ];

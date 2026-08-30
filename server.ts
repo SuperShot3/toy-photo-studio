@@ -60,7 +60,7 @@ async function startServer() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Toy Photo Studio server running at http://0.0.0.0:${PORT}`);
+    console.log(`PhotoStudioAI server running at http://0.0.0.0:${PORT}`);
   });
 }
 

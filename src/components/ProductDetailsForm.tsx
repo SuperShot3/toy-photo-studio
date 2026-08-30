@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Sparkles, Wand2, Loader2, Check, ArrowRight } from 'lucide-react';
-import { ImprovedDescriptionResponse, ApiSettings } from '../types';
+import { ImprovedDescriptionResponse, ApiSettings, ProductKind } from '../types';
 import { getActiveApiKey, isApiKeyConfigured } from '../utils/apiSettings';
 import { readApiError, readNetworkError } from '../utils/apiError';
 
@@ -9,6 +9,7 @@ interface ProductDetailsFormProps {
   onProductNameChange: (val: string) => void;
   toySizeCm: string;
   onToySizeCmChange: (val: string) => void;
+  productKind: ProductKind;
   description: string;
   onDescriptionChange: (val: string) => void;
   imageBase64: string | null;
@@ -22,6 +23,7 @@ export const ProductDetailsForm: React.FC<ProductDetailsFormProps> = ({
   onProductNameChange,
   toySizeCm,
   onToySizeCmChange,
+  productKind,
   description,
   onDescriptionChange,
   imageBase64,
@@ -40,7 +42,7 @@ export const ProductDetailsForm: React.FC<ProductDetailsFormProps> = ({
     }
 
     if (!isApiKeyConfigured(apiSettings)) {
-      setImproveError(`Please add your ${apiSettings.provider === 'openai' ? 'OpenAI' : 'Gemini'} API key in the settings panel.`);
+      setImproveError('Please add your OpenAI API key in the settings panel.');
       return;
     }
 
@@ -54,10 +56,10 @@ export const ProductDetailsForm: React.FC<ProductDetailsFormProps> = ({
         body: JSON.stringify({
           productName,
           toySizeCm,
+          productKind,
           roughDescription: description,
           imageBase64: imageBase64 || undefined,
           mimeType: mimeType || undefined,
-          provider: apiSettings.provider,
           apiKey: getActiveApiKey(apiSettings),
         }),
       });
@@ -102,7 +104,7 @@ export const ProductDetailsForm: React.FC<ProductDetailsFormProps> = ({
             type="text"
             value={productName}
             onChange={(e) => onProductNameChange(e.target.value)}
-            placeholder="e.g. Handcrafted Oak Wood Train"
+            placeholder={productKind === 'flowers' ? 'e.g. Garden Rose Bouquet' : 'e.g. Handcrafted Oak Wood Train'}
             className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all placeholder:text-slate-400 font-medium"
           />
         </div>
@@ -110,7 +112,7 @@ export const ProductDetailsForm: React.FC<ProductDetailsFormProps> = ({
         {/* Toy Size in cm */}
         <div>
           <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1.5">
-            Toy Size (cm) <span className="text-indigo-600">*</span>
+            {productKind === 'flowers' ? 'Height (cm)' : 'Toy Size (cm)'} <span className="text-indigo-600">*</span>
           </label>
           <div className="relative">
             <input
@@ -160,7 +162,11 @@ export const ProductDetailsForm: React.FC<ProductDetailsFormProps> = ({
           rows={2}
           value={description}
           onChange={(e) => onDescriptionChange(e.target.value)}
-          placeholder="Briefly describe materials, colors, age group, or key details..."
+          placeholder={
+            productKind === 'flowers'
+              ? 'Bloom types, stem count, wrapping, or occasion...'
+              : 'Briefly describe materials, colors, age group, or key details...'
+          }
           className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 h-16 resize-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none placeholder:text-slate-400 font-medium transition-all"
         />
       </div>

@@ -108,7 +108,7 @@ export const SessionGallery: React.FC<SessionGalleryProps> = ({
                 </div>
                 <div className="px-1.5 py-1.5 bg-white border-t border-slate-100">
                   <p className="text-[10px] font-bold text-slate-700 truncate leading-tight">
-                    {shot.productName || 'Toy'}
+                    {shot.productName || 'Product'}
                   </p>
                   <p className="text-[9px] text-slate-400 truncate">
                     {STYLE_LABEL[shot.style]} · {formatShotTime(shot.generatedAt)}

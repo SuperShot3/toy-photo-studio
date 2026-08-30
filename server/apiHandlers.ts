@@ -1,4 +1,5 @@
-import { improveDescription, generatePhoto, AiProvider } from "./ai";
+import { improveDescription, generatePhoto } from "./ai";
+import { parseOpenAiImageModel, parseProductKind } from "../src/types";
 
 export type JsonBody = Record<string, unknown>;
 
@@ -14,9 +15,7 @@ function asString(value: unknown, fallback = ""): string {
 }
 
 export function parseAiConfig(body: JsonBody) {
-  const provider: AiProvider = body.provider === "gemini" ? "gemini" : "openai";
   return {
-    provider,
     apiKey: asString(body.apiKey).trim(),
   };
 }
@@ -24,6 +23,7 @@ export function parseAiConfig(body: JsonBody) {
 export async function runImproveDescription(body: JsonBody): Promise<ApiResult> {
   const productName = asString(body.productName);
   const toySizeCm = body.toySizeCm as string | number | undefined;
+  const productKind = parseProductKind(body.productKind);
   const roughDescription = asString(body.roughDescription);
   const imageBase64 = asString(body.imageBase64) || undefined;
   const mimeType = asString(body.mimeType) || undefined;
@@ -39,6 +39,7 @@ export async function runImproveDescription(body: JsonBody): Promise<ApiResult> 
     const parsedData = await improveDescription(parseAiConfig(body), {
       productName,
       toySizeCm,
+      productKind,
       roughDescription,
       imageBase64,
       mimeType,
@@ -54,14 +55,21 @@ export async function runImproveDescription(body: JsonBody): Promise<ApiResult> 
 export async function runGeneratePhoto(body: JsonBody): Promise<ApiResult> {
   const imageBase64 = asString(body.imageBase64);
   const mimeType = asString(body.mimeType, "image/jpeg");
-  const productName = asString(body.productName, "Toy");
+  const productKind = parseProductKind(body.productKind);
+  const productName = asString(body.productName, productKind === "flowers" ? "Bouquet" : "Toy");
   const toySizeCm = (body.toySizeCm as string | number | undefined) ?? 20;
   const productDescription = asString(body.productDescription);
   const style = asString(body.style, "clean-catalog");
   const personScale = asString(body.personScale, "none");
+  const openaiImageModel = parseOpenAiImageModel(
+    body.openaiImageModel ?? body.openaiImageMode
+  );
 
   if (!imageBase64) {
-    return { status: 400, body: { error: "Missing required reference image." } };
+    return {
+      status: 400,
+      body: { error: "Missing required reference image." },
+    };
   }
 
   try {
@@ -72,8 +80,10 @@ export async function runGeneratePhoto(body: JsonBody): Promise<ApiResult> {
       productName,
       toySizeCm,
       productDescription,
+      productKind,
       style: style as "clean-catalog" | "styled-promo" | "luxury-promo",
       personScale: personScale as "none" | "child" | "adult",
+      openaiImageModel,
     });
 
     return {
@@ -84,7 +94,8 @@ export async function runGeneratePhoto(body: JsonBody): Promise<ApiResult> {
         personScale,
         productName,
         toySizeCm,
-        provider: aiConfig.provider,
+        productKind,
+        openaiImageModel,
       },
     };
   } catch (error: unknown) {
