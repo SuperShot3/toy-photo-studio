@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Sparkles, Wand2, Loader2, Check, ArrowRight } from 'lucide-react';
 import { ImprovedDescriptionResponse, ApiSettings } from '../types';
 import { getActiveApiKey, isApiKeyConfigured } from '../utils/apiSettings';
+import { readApiError, readNetworkError } from '../utils/apiError';
 
 interface ProductDetailsFormProps {
   productName: string;
@@ -62,15 +63,14 @@ export const ProductDetailsForm: React.FC<ProductDetailsFormProps> = ({
       });
 
       if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || 'Failed to generate improved copy.');
+        throw new Error(await readApiError(response, 'Failed to generate improved copy.'));
       }
 
       const data: ImprovedDescriptionResponse = await response.json();
       setSuggestion(data);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setImproveError(err.message || 'Error generating description.');
+      setImproveError(readNetworkError(err, 'Error generating description.'));
     } finally {
       setIsImproving(false);
     }

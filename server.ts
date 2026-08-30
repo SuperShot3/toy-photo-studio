@@ -1,4 +1,4 @@
-import express, { Request, Response } from "express";
+import express, { NextFunction, Request, Response } from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
@@ -92,6 +92,23 @@ app.post("/api/generate-photo", async (req: Request, res: Response): Promise<voi
       error instanceof Error ? error.message : "An error occurred while generating the studio photo.";
     res.status(500).json({ error: message });
   }
+});
+
+app.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
+  if (res.headersSent) {
+    next(err);
+    return;
+  }
+
+  const expressErr = err as { status?: number; statusCode?: number; type?: string; message?: string };
+  const status = expressErr.status || expressErr.statusCode || 500;
+  const message =
+    expressErr.type === "entity.too.large"
+      ? "The photo is too large. Please upload a smaller JPEG or PNG."
+      : expressErr.message || "Server error.";
+
+  console.error("Unhandled API error:", err);
+  res.status(status).json({ error: message });
 });
 
 async function startServer() {

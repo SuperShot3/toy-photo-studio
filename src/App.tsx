@@ -11,9 +11,11 @@ import { StyleSelector } from './components/StyleSelector';
 import { ScaleSelector } from './components/ScaleSelector';
 import { ResultView } from './components/ResultView';
 import { ApiSettingsPanel } from './components/ApiSettingsPanel';
-import { ImageStyle, PersonScale, GeneratedResult, ImprovedDescriptionResponse, SampleToy, ApiSettings } from './types';
-import { loadApiSettings, saveApiSettings, getActiveApiKey, isApiKeyConfigured } from './utils/apiSettings';
+import { ImageStyle, PersonScale, GeneratedResult, ImprovedDescriptionResponse, ApiSettings } from './types';
 import { Sparkles, ArrowRight, Loader2, AlertCircle, ShieldCheck, CheckCircle, Zap } from 'lucide-react';
+import { loadApiSettings, saveApiSettings, getActiveApiKey, isApiKeyConfigured } from './utils/apiSettings';
+import { readApiError, readNetworkError } from './utils/apiError';
+import { getShotPrice } from './utils/generationPricing';
 
 export default function App() {
   const [apiSettings, setApiSettings] = useState<ApiSettings>(() => loadApiSettings());
@@ -40,19 +42,13 @@ export default function App() {
   const [result, setResult] = useState<GeneratedResult | null>(null);
 
   const resultRef = useRef<HTMLDivElement>(null);
+  const shotPrice = getShotPrice(apiSettings.provider);
 
   // Handle image selection
-  const handleImageSelected = (base64Url: string, fileMimeType: string, sampleData?: SampleToy) => {
+  const handleImageSelected = (base64Url: string, fileMimeType: string) => {
     setImagePreviewUrl(base64Url);
     setMimeType(fileMimeType);
     setError(null);
-
-    // Auto-populate fields if sample toy was picked and user hasn't typed anything yet
-    if (sampleData) {
-      if (!productName) setProductName(sampleData.name);
-      if (!toySizeCm || toySizeCm === '25') setToySizeCm(sampleData.sizeCm.toString());
-      if (!description) setDescription(sampleData.description);
-    }
   };
 
   const handleClearImage = () => {
@@ -113,8 +109,9 @@ export default function App() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to generate product photo. Please try again.');
+        throw new Error(
+          await readApiError(response, 'Failed to generate product photo. Please try again.')
+        );
       }
 
       const data = await response.json();
@@ -138,9 +135,9 @@ export default function App() {
       setTimeout(() => {
         resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }, 150);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Generation failed:', err);
-      setError(err.message || 'An error occurred during generation.');
+      setError(readNetworkError(err, 'An error occurred during generation.'));
     } finally {
       clearTimeout(t1);
       clearTimeout(t2);
@@ -225,32 +222,46 @@ export default function App() {
                 type="button"
                 onClick={handleGenerateImage}
                 disabled={isGenerating || !imagePreviewUrl}
-                className={`w-full py-3.5 px-5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all duration-150 cursor-pointer ${
+                title={`${shotPrice.perImage} · ${shotPrice.model}`}
+                className={`w-full py-3.5 px-4 rounded-xl text-sm font-bold flex items-center gap-2 transition-all duration-150 cursor-pointer ${
                   isGenerating
-                    ? 'bg-indigo-600/80 text-white cursor-not-allowed'
+                    ? 'justify-center bg-indigo-600/80 text-white cursor-not-allowed'
                     : !imagePreviewUrl
-                    ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
-                    : 'bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white shadow-lg shadow-indigo-100'
+                    ? 'justify-between bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
+                    : 'justify-between bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white shadow-lg shadow-indigo-100'
                 }`}
               >
                 {isGenerating ? (
                   <>
-                    <Loader2 className="w-4 h-4 animate-spin text-white" />
-                    <span>{generationStep || 'Rendering Studio Shot...'}</span>
+                    <Loader2 className="w-4 h-4 animate-spin text-white shrink-0" />
+                    <span className="truncate">{generationStep || 'Rendering Studio Shot...'}</span>
                   </>
                 ) : (
                   <>
-                    <span>Generate Professional Shot</span>
-                    <Sparkles className="w-4 h-4" />
+                    <span className="flex items-center gap-2 min-w-0">
+                      <span className="truncate">Generate Professional Shot</span>
+                      <Sparkles className="w-4 h-4 shrink-0" />
+                    </span>
+                    <span
+                      className={`shrink-0 tabular-nums text-[11px] font-bold tracking-tight px-2 py-0.5 rounded-md ${
+                        !imagePreviewUrl
+                          ? 'bg-slate-200 text-slate-500'
+                          : 'bg-white/20 text-white'
+                      }`}
+                    >
+                      {shotPrice.label}
+                    </span>
                   </>
                 )}
               </button>
 
-              {!imagePreviewUrl && (
-                <p className="text-center text-[11px] text-slate-400 mt-2 font-medium">
-                  Upload photo or click a preset sample above to start
-                </p>
-              )}
+              <p className="text-center text-[11px] text-slate-400 mt-2 font-medium">
+                {!imagePreviewUrl
+                  ? `Upload a toy photo to start · ${shotPrice.perImage}`
+                  : `${shotPrice.perImage} · ${shotPrice.model} · billed to your ${
+                      apiSettings.provider === 'openai' ? 'OpenAI' : 'Gemini'
+                    } key`}
+              </p>
             </div>
           </section>
 
@@ -261,6 +272,7 @@ export default function App() {
                 result={result}
                 onRegenerate={handleGenerateImage}
                 isRegenerating={isGenerating}
+                shotPriceLabel={shotPrice.label}
               />
             ) : isGenerating ? (
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 sm:p-12 flex flex-col items-center justify-center text-center min-h-[460px] space-y-5">

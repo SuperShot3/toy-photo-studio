@@ -45,13 +45,102 @@ function getGeminiClient(apiKey: string): GoogleGenAI {
 }
 
 function getOpenAIClient(apiKey: string): OpenAI {
-  return new OpenAI({ apiKey });
+  return new OpenAI({
+    apiKey,
+    timeout: 10 * 60 * 1000,
+    maxRetries: 1,
+  });
 }
 
 function extensionForMime(mimeType: string): string {
   if (mimeType.includes("png")) return "png";
   if (mimeType.includes("webp")) return "webp";
   return "jpg";
+}
+
+function extractErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) {
+    const msg = error.message;
+    if (/organization must be verified/i.test(msg)) {
+      return "This OpenAI organization must be verified to generate images. Verify it at platform.openai.com, then try again.";
+    }
+    if (/invalid api key|incorrect api key|authentication/i.test(msg)) {
+      return "The API key was rejected. Check it in the settings panel and try again.";
+    }
+    if (/insufficient_quota|billing/i.test(msg)) {
+      return "This API key is out of credit or billing is not enabled. Check the provider billing page, then try again.";
+    }
+    return msg;
+  }
+  return fallback;
+}
+
+function normalizeMime(mimeType?: string): string {
+  const mime = (mimeType || "").toLowerCase();
+  if (mime.includes("png")) return "image/png";
+  if (mime.includes("webp")) return "image/webp";
+  if (mime.includes("jpeg") || mime.includes("jpg")) return "image/jpeg";
+  return mime || "image/jpeg";
+}
+
+function decodeReferenceImage(
+  imagePayload: string,
+  mimeType: string
+): { cleanBase64: string; mimeType: string; buffer: Buffer } {
+  let mime = normalizeMime(mimeType);
+  let payload = imagePayload.trim();
+
+  if (/^data:image\/svg/i.test(payload) || /(?:;|^)utf-?8,/i.test(payload.split(",")[0] || "")) {
+    throw new Error(
+      "This photo format is not supported. Please upload a JPEG, PNG, or WEBP image."
+    );
+  }
+
+  const dataUrlMatch = payload.match(/^data:([^;,]+)?(?:;charset=[^;,]+)?(;base64)?,(.*)$/s);
+  if (dataUrlMatch) {
+    mime = normalizeMime(dataUrlMatch[1] || mime);
+    const isBase64 = dataUrlMatch[2] === ";base64";
+    const data = dataUrlMatch[3] || "";
+    if (!isBase64) {
+      throw new Error(
+        "This photo format is not supported. Please upload a JPEG, PNG, or WEBP image."
+      );
+    }
+    payload = data;
+  }
+
+  if (mime.includes("svg") || mime.includes("heic") || mime.includes("heif") || mime.includes("tiff")) {
+    throw new Error(
+      `Unsupported image format (${mime}). Please upload a JPEG, PNG, or WEBP photo.`
+    );
+  }
+
+  const buffer = Buffer.from(payload.replace(/\s/g, ""), "base64");
+  if (buffer.length < 32) {
+    throw new Error("The reference image could not be read. Please try another photo.");
+  }
+
+  return { cleanBase64: payload, mimeType: mime, buffer };
+}
+
+type GeminiPart = {
+  thought?: boolean;
+  inlineData?: { data?: string; mimeType?: string };
+};
+
+function extractGeminiImage(response: {
+  candidates?: Array<{ content?: { parts?: GeminiPart[] } }>;
+}): string | null {
+  const parts = response.candidates?.[0]?.content?.parts || [];
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const part = parts[i];
+    if (part.thought) continue;
+    if (part.inlineData?.data) {
+      const outMime = part.inlineData.mimeType || "image/png";
+      return `data:${outMime};base64,${part.inlineData.data}`;
+    }
+  }
+  return null;
 }
 
 export async function improveDescription(
@@ -80,11 +169,11 @@ export async function improveDescription(
     const parts: Array<{ text?: string; inlineData?: { data: string; mimeType: string } }> = [];
 
     if (params.imageBase64) {
-      const cleanBase64 = params.imageBase64.replace(/^data:[^;]+;base64,/, "");
+      const decoded = decodeReferenceImage(params.imageBase64, params.mimeType || "image/jpeg");
       parts.push({
         inlineData: {
-          data: cleanBase64,
-          mimeType: params.mimeType || "image/jpeg",
+          data: decoded.cleanBase64,
+          mimeType: decoded.mimeType,
         },
       });
     }
@@ -106,9 +195,10 @@ export async function improveDescription(
   const userContent: OpenAI.Chat.Completions.ChatCompletionContentPart[] = [];
 
   if (params.imageBase64) {
+    const decoded = decodeReferenceImage(params.imageBase64, params.mimeType || "image/jpeg");
     userContent.push({
       type: "image_url",
-      image_url: { url: params.imageBase64 },
+      image_url: { url: `data:${decoded.mimeType};base64,${decoded.cleanBase64}` },
     });
   }
 
@@ -128,116 +218,116 @@ async function generateImageGemini(
   apiKey: string,
   cleanBase64: string,
   mimeType: string,
-  masterPrompt: string
+  masterPrompt: string,
+  personScale: PersonScale
 ): Promise<string> {
   const ai = getGeminiClient(apiKey);
+  const models = ["gemini-3.1-flash-image", "gemini-3.1-flash-lite-image"] as const;
+  let lastError: unknown;
 
-  try {
-    const imgResponse = await ai.models.generateContent({
-      model: "gemini-3.1-flash-image",
-      contents: {
-        parts: [
-          {
-            inlineData: {
-              data: cleanBase64,
-              mimeType: mimeType || "image/jpeg",
+  for (const model of models) {
+    try {
+      const imgResponse = await ai.models.generateContent({
+        model,
+        contents: {
+          parts: [
+            {
+              inlineData: {
+                data: cleanBase64,
+                mimeType: mimeType || "image/jpeg",
+              },
             },
-          },
-          { text: masterPrompt },
-        ],
-      },
-      config: {
-        imageConfig: {
-          aspectRatio: "1:1",
-          imageSize: "1K",
+            { text: masterPrompt },
+          ],
         },
-      },
-    });
-
-    if (imgResponse.candidates?.[0]?.content?.parts) {
-      for (const part of imgResponse.candidates[0].content.parts) {
-        if (part.inlineData?.data) {
-          const outMime = part.inlineData.mimeType || "image/png";
-          return `data:${outMime};base64,${part.inlineData.data}`;
-        }
-      }
-    }
-  } catch (imgError: unknown) {
-    const message = imgError instanceof Error ? imgError.message : String(imgError);
-    console.warn("Primary Gemini image model attempt error:", message);
-
-    const fallbackResponse = await ai.models.generateContent({
-      model: "gemini-3.1-flash-lite-image",
-      contents: {
-        parts: [
-          {
-            inlineData: {
-              data: cleanBase64,
-              mimeType: mimeType || "image/jpeg",
-            },
+        config: {
+          responseModalities: ["TEXT", "IMAGE"],
+          imageConfig: {
+            aspectRatio: "1:1",
+            imageSize: "1K",
+            ...(personScale !== "none" ? { personGeneration: "ALLOW_ALL" } : {}),
           },
-          { text: masterPrompt },
-        ],
-      },
-      config: {
-        imageConfig: {
-          aspectRatio: "1:1",
         },
-      },
-    });
+      });
 
-    if (fallbackResponse.candidates?.[0]?.content?.parts) {
-      for (const part of fallbackResponse.candidates[0].content.parts) {
-        if (part.inlineData?.data) {
-          const outMime = part.inlineData.mimeType || "image/png";
-          return `data:${outMime};base64,${part.inlineData.data}`;
-        }
-      }
+      const imageUrl = extractGeminiImage(imgResponse);
+      if (imageUrl) return imageUrl;
+
+      console.warn(`${model} returned no image payload.`);
+    } catch (imgError: unknown) {
+      lastError = imgError;
+      console.warn(
+        `${model} attempt error:`,
+        imgError instanceof Error ? imgError.message : String(imgError)
+      );
     }
   }
 
-  throw new Error("Gemini did not return an image. Please try again with a clear photo.");
+  throw new Error(
+    extractErrorMessage(
+      lastError,
+      "Gemini did not return an image. Please try again with a clear JPEG or PNG photo."
+    )
+  );
 }
 
 async function generateImageOpenAI(
   apiKey: string,
-  cleanBase64: string,
+  buffer: Buffer,
   mimeType: string,
   masterPrompt: string
 ): Promise<string> {
   const openai = getOpenAIClient(apiKey);
-  const buffer = Buffer.from(cleanBase64, "base64");
   const ext = extensionForMime(mimeType);
+  const models = ["gpt-image-1.5", "gpt-image-1"] as const;
+  let lastError: unknown;
 
-  const imageFile = await toFile(buffer, `toy.${ext}`, { type: mimeType || "image/jpeg" });
+  for (const model of models) {
+    try {
+      const imageFile = await toFile(buffer, `toy.${ext}`, { type: mimeType || "image/jpeg" });
+      const response = await openai.images.edit({
+        model,
+        image: imageFile,
+        prompt: masterPrompt,
+        size: "1024x1024",
+        input_fidelity: "high",
+        quality: "medium",
+        output_format: "png",
+      });
 
-  const response = await openai.images.edit({
-    model: "gpt-image-1",
-    image: imageFile,
-    prompt: masterPrompt,
-    size: "1024x1024",
-    input_fidelity: "high",
-    quality: "medium",
-  });
+      const b64 = response.data?.[0]?.b64_json;
+      if (b64) {
+        return `data:image/png;base64,${b64}`;
+      }
 
-  const b64 = response.data?.[0]?.b64_json;
-  if (b64) {
-    return `data:image/png;base64,${b64}`;
-  }
+      const url = response.data?.[0]?.url;
+      if (url) {
+        const imageResponse = await fetch(url);
+        if (!imageResponse.ok) {
+          throw new Error("Failed to download generated image from OpenAI.");
+        }
+        const arrayBuffer = await imageResponse.arrayBuffer();
+        const outB64 = Buffer.from(arrayBuffer).toString("base64");
+        const contentType = imageResponse.headers.get("content-type") || "image/png";
+        return `data:${contentType};base64,${outB64}`;
+      }
 
-  const url = response.data?.[0]?.url;
-  if (url) {
-    const imageResponse = await fetch(url);
-    if (!imageResponse.ok) {
-      throw new Error("Failed to download generated image from OpenAI.");
+      console.warn(`${model} returned no image payload.`);
+    } catch (imgError: unknown) {
+      lastError = imgError;
+      console.warn(
+        `${model} attempt error:`,
+        imgError instanceof Error ? imgError.message : String(imgError)
+      );
     }
-    const arrayBuffer = await imageResponse.arrayBuffer();
-    const outB64 = Buffer.from(arrayBuffer).toString("base64");
-    const contentType = imageResponse.headers.get("content-type") || "image/png";
-    return `data:${contentType};base64,${outB64}`;
   }
 
-  throw new Error("OpenAI did not return an image. Please try again with a clear photo.");
+  throw new Error(
+    extractErrorMessage(
+      lastError,
+      "OpenAI did not return an image. Please try again with a clear JPEG or PNG photo."
+    )
+  );
 }
 
 async function generateCopy(
@@ -314,7 +404,7 @@ export async function generatePhoto(
   marketingDescription: string;
 }> {
   const apiKey = resolveApiKey(config);
-  const cleanBase64 = params.imageBase64.replace(/^data:[^;]+;base64,/, "");
+  const decoded = decodeReferenceImage(params.imageBase64, params.mimeType);
 
   const promptParams: StudioPromptParams = {
     productName: params.productName,
@@ -326,10 +416,23 @@ export async function generatePhoto(
 
   const masterPrompt = buildStudioPrompt(promptParams);
 
-  const imageUrl =
-    config.provider === "gemini"
-      ? await generateImageGemini(apiKey, cleanBase64, params.mimeType, masterPrompt)
-      : await generateImageOpenAI(apiKey, cleanBase64, params.mimeType, masterPrompt);
+  let imageUrl: string;
+  try {
+    imageUrl =
+      config.provider === "gemini"
+        ? await generateImageGemini(
+            apiKey,
+            decoded.cleanBase64,
+            decoded.mimeType,
+            masterPrompt,
+            params.personScale
+          )
+        : await generateImageOpenAI(apiKey, decoded.buffer, decoded.mimeType, masterPrompt);
+  } catch (imageErr) {
+    throw new Error(
+      extractErrorMessage(imageErr, "Failed to generate a studio photo. Please try again.")
+    );
+  }
 
   let copy: GeneratedCopyResult;
   try {

@@ -7,12 +7,14 @@ interface ResultViewProps {
   result: GeneratedResult;
   onRegenerate: () => void;
   isRegenerating: boolean;
+  shotPriceLabel: string;
 }
 
 export const ResultView: React.FC<ResultViewProps> = ({
   result,
   onRegenerate,
   isRegenerating,
+  shotPriceLabel,
 }) => {
   const [copied, setCopied] = useState(false);
 
@@ -64,10 +66,14 @@ export const ResultView: React.FC<ResultViewProps> = ({
             type="button"
             onClick={onRegenerate}
             disabled={isRegenerating}
+            title={`${shotPriceLabel} per image`}
             className="px-3 py-1.5 rounded-lg border border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 shadow-xs"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isRegenerating ? 'animate-spin text-indigo-600' : ''}`} />
             Regenerate
+            <span className="tabular-nums text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+              {shotPriceLabel}
+            </span>
           </button>
 
           <button

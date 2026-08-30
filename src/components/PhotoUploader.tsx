@@ -1,11 +1,10 @@
 import React, { useRef, useState } from 'react';
-import { UploadCloud, Image as ImageIcon, X, RefreshCw, Sparkles, Check } from 'lucide-react';
-import { SAMPLE_TOYS } from '../data/sampleToys';
-import { SampleToy } from '../types';
+import { UploadCloud, Image as ImageIcon, X, RefreshCw, Loader2 } from 'lucide-react';
+import { normalizeReferenceImage } from '../utils/normalizeImage';
 
 interface PhotoUploaderProps {
   imagePreviewUrl: string | null;
-  onImageSelected: (base64Url: string, mimeType: string, sampleData?: SampleToy) => void;
+  onImageSelected: (base64Url: string, mimeType: string) => void;
   onClearImage: () => void;
 }
 
@@ -16,11 +15,29 @@ export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [selectedSampleId, setSelectedSampleId] = useState<string | null>(null);
+  const [isNormalizing, setIsNormalizing] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  const applyImage = async (dataUrl: string) => {
+    setIsNormalizing(true);
+    setUploadError(null);
+    try {
+      const normalized = await normalizeReferenceImage(dataUrl);
+      onImageSelected(normalized.dataUrl, normalized.mimeType);
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Could not read that image. Please upload a JPEG, PNG, or WEBP photo.';
+      setUploadError(message);
+    } finally {
+      setIsNormalizing(false);
+    }
+  };
 
   const handleFile = (file: File) => {
     if (!file.type.startsWith('image/')) {
-      alert('Please upload a valid image file (JPEG, PNG, WEBP).');
+      setUploadError('Please upload a valid image file (JPEG, PNG, WEBP).');
       return;
     }
 
@@ -28,9 +45,11 @@ export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
     reader.onload = (e) => {
       const result = e.target?.result as string;
       if (result) {
-        setSelectedSampleId(null);
-        onImageSelected(result, file.type);
+        void applyImage(result);
       }
+    };
+    reader.onerror = () => {
+      setUploadError('Could not read that file. Please try another photo.');
     };
     reader.readAsDataURL(file);
   };
@@ -53,21 +72,19 @@ export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
     setIsDragging(false);
   };
 
-  const handleSampleClick = (sample: SampleToy) => {
-    setSelectedSampleId(sample.id);
-    onImageSelected(sample.dataUrl, 'image/svg+xml', sample);
-  };
-
   return (
     <div className="space-y-3.5">
       <div className="flex items-center justify-between">
         <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider">
           1. Toy Photo Reference <span className="text-indigo-600">*</span>
         </label>
-        {imagePreviewUrl && (
+          {imagePreviewUrl && (
           <button
             type="button"
-            onClick={onClearImage}
+            onClick={() => {
+              setUploadError(null);
+              onClearImage();
+            }}
             className="text-[11px] font-semibold text-slate-400 hover:text-red-600 flex items-center gap-1 transition-colors cursor-pointer"
           >
             <X className="w-3.5 h-3.5" />
@@ -79,7 +96,7 @@ export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/png, image/jpeg, image/webp, image/heic"
+        accept="image/png, image/jpeg, image/webp, image/heic, image/heif"
         className="hidden"
         onChange={(e) => {
           if (e.target.files && e.target.files.length > 0) {
@@ -90,6 +107,11 @@ export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
 
       {imagePreviewUrl ? (
         <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-100 group shadow-xs">
+          {isNormalizing && (
+            <div className="absolute inset-0 z-10 bg-white/70 flex items-center justify-center">
+              <Loader2 className="w-5 h-5 animate-spin text-indigo-600" />
+            </div>
+          )}
           <div className="aspect-square sm:aspect-16/10 max-h-[300px] w-full flex items-center justify-center p-3">
             <img
               src={imagePreviewUrl}
@@ -138,47 +160,17 @@ export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
             <ImageIcon className="w-3.5 h-3.5" />
             Browse Device
           </div>
+          {isNormalizing && (
+            <div className="absolute inset-0 rounded-xl bg-white/70 flex items-center justify-center">
+              <Loader2 className="w-5 h-5 animate-spin text-indigo-600" />
+            </div>
+          )}
         </div>
       )}
 
-      {/* Preset sample toys for quick test */}
-      <div className="pt-0.5">
-        <div className="flex items-center gap-1 text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-          <Sparkles className="w-3 h-3 text-indigo-500" />
-          <span>Quick Preset Samples</span>
-        </div>
-        <div className="grid grid-cols-3 gap-2">
-          {SAMPLE_TOYS.map((sample) => {
-            const isSelected = selectedSampleId === sample.id;
-            return (
-              <button
-                key={sample.id}
-                type="button"
-                onClick={() => handleSampleClick(sample)}
-                className={`p-2 rounded-lg border text-left transition-all flex items-center gap-2 cursor-pointer ${
-                  isSelected
-                    ? 'border-2 border-indigo-600 bg-indigo-50/80 shadow-xs'
-                    : 'border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300'
-                }`}
-              >
-                <div className="w-7 h-7 rounded-md overflow-hidden bg-slate-100 shrink-0 border border-slate-200/80 p-0.5 flex items-center justify-center">
-                  <img
-                    src={sample.thumbnail}
-                    alt={sample.name}
-                    className="w-full h-full object-contain"
-                    referrerPolicy="no-referrer"
-                  />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-[11px] font-bold text-slate-800 truncate">{sample.name}</div>
-                  <div className="text-[10px] text-slate-400">{sample.sizeCm}cm</div>
-                </div>
-                {isSelected && <Check className="w-3 h-3 text-indigo-600 shrink-0" />}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      {uploadError && (
+        <p className="text-[11px] text-red-600 font-medium">{uploadError}</p>
+      )}
     </div>
   );
 };

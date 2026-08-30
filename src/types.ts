@@ -71,12 +71,3 @@ export interface ScaleOption {
   subtitle: string;
   icon: string;
 }
-
-export interface SampleToy {
-  id: string;
-  name: string;
-  sizeCm: number;
-  description: string;
-  thumbnail: string;
-  dataUrl: string;
-}

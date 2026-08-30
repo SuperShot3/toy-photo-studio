@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { KeyRound, ChevronDown, ChevronUp, Eye, EyeOff, CheckCircle2, AlertCircle } from 'lucide-react';
 import { ApiSettings, AiProvider } from '../types';
 import { getActiveApiKey, isApiKeyConfigured, providerLabel } from '../utils/apiSettings';
+import { getShotPrice } from '../utils/generationPricing';
 
 interface ApiSettingsPanelProps {
   settings: ApiSettings;
@@ -12,12 +13,27 @@ export const ApiSettingsPanel: React.FC<ApiSettingsPanelProps> = ({
   settings,
   onSettingsChange,
 }) => {
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(() => !isApiKeyConfigured(settings));
   const [showGeminiKey, setShowGeminiKey] = useState(false);
   const [showOpenaiKey, setShowOpenaiKey] = useState(false);
+  const [openaiDraft, setOpenaiDraft] = useState(settings.openaiApiKey);
+  const [geminiDraft, setGeminiDraft] = useState(settings.geminiApiKey);
+
+  useEffect(() => {
+    setOpenaiDraft(settings.openaiApiKey);
+    setGeminiDraft(settings.geminiApiKey);
+  }, [settings.openaiApiKey, settings.geminiApiKey]);
 
   const configured = isApiKeyConfigured(settings);
   const activeKey = getActiveApiKey(settings);
+  const draftSettings: ApiSettings = {
+    ...settings,
+    openaiApiKey: openaiDraft,
+    geminiApiKey: geminiDraft,
+  };
+  const isDirty =
+    openaiDraft !== settings.openaiApiKey || geminiDraft !== settings.geminiApiKey;
+  const draftHasActiveKey = isApiKeyConfigured(draftSettings);
 
   const update = (patch: Partial<ApiSettings>) => {
     onSettingsChange({ ...settings, ...patch });
@@ -25,6 +41,16 @@ export const ApiSettingsPanel: React.FC<ApiSettingsPanelProps> = ({
 
   const handleProviderChange = (provider: AiProvider) => {
     update({ provider });
+  };
+
+  const handleSave = () => {
+    if (!isDirty && !draftHasActiveKey) return;
+    onSettingsChange(draftSettings);
+    setShowGeminiKey(false);
+    setShowOpenaiKey(false);
+    if (isApiKeyConfigured(draftSettings)) {
+      setIsOpen(false);
+    }
   };
 
   return (
@@ -80,7 +106,10 @@ export const ApiSettingsPanel: React.FC<ApiSettingsPanelProps> = ({
                         : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'
                     }`}
                   >
-                    {provider === 'openai' ? 'ChatGPT' : 'Gemini'}
+                    <span className="block">{provider === 'openai' ? 'ChatGPT' : 'Gemini'}</span>
+                    <span className={`block text-[10px] font-semibold tabular-nums ${selected ? 'text-white/80' : 'text-slate-400'}`}>
+                      {getShotPrice(provider).perImage}
+                    </span>
                   </button>
                 );
               })}
@@ -95,8 +124,14 @@ export const ApiSettingsPanel: React.FC<ApiSettingsPanelProps> = ({
               <div className="relative">
                 <input
                   type={showOpenaiKey ? 'text' : 'password'}
-                  value={settings.openaiApiKey}
-                  onChange={(e) => update({ openaiApiKey: e.target.value })}
+                  value={openaiDraft}
+                  onChange={(e) => setOpenaiDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleSave();
+                    }
+                  }}
                   placeholder="sk-..."
                   className="w-full px-3 py-2 pr-10 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none font-mono"
                 />
@@ -110,7 +145,7 @@ export const ApiSettingsPanel: React.FC<ApiSettingsPanelProps> = ({
                 </button>
               </div>
               <p className="text-[10px] text-slate-400 mt-1.5">
-                Uses gpt-image-1 for photos and gpt-4o-mini for copy. Get a key at platform.openai.com
+                Uses gpt-image-1.5 for photos and gpt-4o-mini for copy. Get a key at platform.openai.com
               </p>
             </div>
           ) : (
@@ -121,8 +156,14 @@ export const ApiSettingsPanel: React.FC<ApiSettingsPanelProps> = ({
               <div className="relative">
                 <input
                   type={showGeminiKey ? 'text' : 'password'}
-                  value={settings.geminiApiKey}
-                  onChange={(e) => update({ geminiApiKey: e.target.value })}
+                  value={geminiDraft}
+                  onChange={(e) => setGeminiDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleSave();
+                    }
+                  }}
                   placeholder="AIza..."
                   className="w-full px-3 py-2 pr-10 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none font-mono"
                 />
@@ -141,17 +182,36 @@ export const ApiSettingsPanel: React.FC<ApiSettingsPanelProps> = ({
             </div>
           )}
 
-          {!configured && (
+          {!draftHasActiveKey && (
             <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-[10px] text-amber-800">
-              Add your {settings.provider === 'openai' ? 'OpenAI' : 'Gemini'} API key above to generate images.
+              Add your {settings.provider === 'openai' ? 'OpenAI' : 'Gemini'} API key above, then click Save.
             </div>
           )}
 
-          {configured && (
+          {configured && !isDirty && (
             <p className="text-[10px] text-slate-400">
               Key saved in this browser ({activeKey.slice(0, 7)}…{activeKey.slice(-4)})
             </p>
           )}
+
+          {isDirty && (
+            <p className="text-[10px] text-slate-500">
+              Click Save to store this key in your browser. It is not used until you save.
+            </p>
+          )}
+
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={!isDirty && !draftHasActiveKey}
+            className={`w-full py-2 px-3 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+              !isDirty && !draftHasActiveKey
+                ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
+                : 'bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white shadow-sm'
+            }`}
+          >
+            Save key
+          </button>
         </div>
       )}
     </div>
