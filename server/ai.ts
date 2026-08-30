@@ -26,7 +26,10 @@ function resolveApiKey(config: AiConfig): string {
   if (!key) {
     const envKey = process.env.OPENAI_API_KEY;
     if (envKey?.trim()) return envKey.trim();
-    throw new Error("No OpenAI API key provided. Add it in the app settings panel.");
+    throw new HttpError(
+      "No OpenAI API key provided. Add it in the app settings panel.",
+      400
+    );
   }
   return key;
 }
@@ -45,21 +48,70 @@ function extensionForMime(mimeType: string): string {
   return "jpg";
 }
 
-function extractErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message) {
-    const msg = error.message;
-    if (/organization must be verified/i.test(msg)) {
-      return "This OpenAI organization must be verified to generate images. Verify it at platform.openai.com, then try again.";
-    }
-    if (/invalid api key|incorrect api key|authentication/i.test(msg)) {
-      return "The API key was rejected. Check it in the settings panel and try again.";
-    }
-    if (/insufficient_quota|billing/i.test(msg)) {
-      return "This API key is out of credit or billing is not enabled. Check the provider billing page, then try again.";
-    }
-    return msg;
+export class HttpError extends Error {
+  status: number;
+
+  constructor(message: string, status = 500) {
+    super(message);
+    this.name = "HttpError";
+    this.status = status;
   }
-  return fallback;
+}
+
+function getErrorStatus(error: unknown): number | undefined {
+  if (error && typeof error === "object" && "status" in error) {
+    const status = (error as { status?: unknown }).status;
+    if (typeof status === "number" && status >= 400 && status < 600) return status;
+  }
+  return undefined;
+}
+
+function getRawErrorText(error: unknown): string {
+  if (typeof error === "string") return error;
+  if (!error || typeof error !== "object") return "";
+  const e = error as {
+    message?: unknown;
+    error?: { message?: unknown } | string;
+  };
+  if (typeof e.error === "object" && typeof e.error?.message === "string") {
+    return e.error.message;
+  }
+  if (typeof e.error === "string") return e.error;
+  if (typeof e.message === "string") return e.message;
+  return "";
+}
+
+function unknownParameterName(error: unknown): string | null {
+  const match = getRawErrorText(error).match(
+    /Unknown parameter:\s*['"]?([A-Za-z0-9_[\]]+)/i
+  );
+  return match?.[1] ?? null;
+}
+
+function shouldFallbackModel(error: unknown): boolean {
+  const text = getRawErrorText(error);
+  return /invalid value:.*gpt-image|must be ['"]dall-e-2['"]|model_not_found|does not have access to model|unknown model|invalid model/i.test(
+    text
+  );
+}
+
+function extractErrorMessage(error: unknown, fallback: string): string {
+  const msg = getRawErrorText(error) || (error instanceof Error ? error.message : "");
+  if (!msg) return fallback;
+
+  if (/organization must be verified/i.test(msg)) {
+    return "This OpenAI organization must be verified to generate images. Verify it at platform.openai.com, then try again.";
+  }
+  if (/invalid api key|incorrect api key|authentication/i.test(msg)) {
+    return "The API key was rejected. Check it in the settings panel and try again.";
+  }
+  if (/insufficient_quota|billing/i.test(msg)) {
+    return "This API key is out of credit or billing is not enabled. Check the provider billing page, then try again.";
+  }
+  if (/safety system|moderation/i.test(msg)) {
+    return "OpenAI blocked this photo. Try a clearer product snapshot without people, then try again.";
+  }
+  return msg;
 }
 
 function normalizeMime(mimeType?: string): string {
@@ -168,6 +220,41 @@ function supportsInputFidelity(model: OpenAiImageModel): boolean {
   return model === "gpt-image-1" || model === "gpt-image-1.5";
 }
 
+type ImageEditExtras = {
+  quality?: "medium";
+  output_format?: "jpeg";
+  output_compression?: number;
+  input_fidelity?: "low";
+};
+
+function fallbackModels(preferred: OpenAiImageModel): OpenAiImageModel[] {
+  const rest: OpenAiImageModel[] = ["gpt-image-1.5", "gpt-image-1-mini", "gpt-image-1"];
+  return [preferred, ...rest.filter((item) => item !== preferred)];
+}
+
+async function readGeneratedImage(
+  response: { data?: Array<{ b64_json?: string; url?: string }> | null }
+): Promise<string> {
+  const b64 = response.data?.[0]?.b64_json;
+  if (b64) {
+    return `data:image/jpeg;base64,${b64}`;
+  }
+
+  const url = response.data?.[0]?.url;
+  if (url) {
+    const imageResponse = await fetch(url);
+    if (!imageResponse.ok) {
+      throw new Error("Failed to download generated image from OpenAI.");
+    }
+    const arrayBuffer = await imageResponse.arrayBuffer();
+    const outB64 = Buffer.from(arrayBuffer).toString("base64");
+    const contentType = imageResponse.headers.get("content-type") || "image/jpeg";
+    return `data:${contentType};base64,${outB64}`;
+  }
+
+  throw new Error("OpenAI did not return an image. Please try again with a clear JPEG or PNG photo.");
+}
+
 async function generateImageOpenAI(
   apiKey: string,
   buffer: Buffer,
@@ -177,46 +264,71 @@ async function generateImageOpenAI(
 ): Promise<string> {
   const openai = getOpenAIClient(apiKey);
   const ext = extensionForMime(mimeType);
+  const bytes = new Uint8Array(buffer);
+  let lastError: unknown;
 
-  try {
-    const imageFile = await toFile(buffer, `reference.${ext}`, { type: mimeType || "image/jpeg" });
-    const response = await openai.images.edit({
-      model,
-      image: imageFile,
-      prompt: masterPrompt,
-      size: "1024x1024",
+  for (const candidate of fallbackModels(model)) {
+    const extras: ImageEditExtras = {
       quality: "medium",
       output_format: "jpeg",
       output_compression: 85,
-      ...(supportsInputFidelity(model) ? { input_fidelity: "low" as const } : {}),
-    });
+      ...(supportsInputFidelity(candidate) ? { input_fidelity: "low" as const } : {}),
+    };
 
-    const b64 = response.data?.[0]?.b64_json;
-    if (b64) {
-      return `data:image/jpeg;base64,${b64}`;
-    }
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        const imageFile = await toFile(bytes, `reference.${ext}`, {
+          type: mimeType || "image/jpeg",
+        });
+        const response = await openai.images.edit({
+          model: candidate,
+          image: imageFile,
+          prompt: masterPrompt,
+          size: "1024x1024",
+          ...extras,
+        });
+        return await readGeneratedImage(response);
+      } catch (imgError: unknown) {
+        lastError = imgError;
+        const unknown = unknownParameterName(imgError);
+        if (unknown && unknown in extras) {
+          delete extras[unknown as keyof ImageEditExtras];
+          continue;
+        }
 
-    const url = response.data?.[0]?.url;
-    if (url) {
-      const imageResponse = await fetch(url);
-      if (!imageResponse.ok) {
-        throw new Error("Failed to download generated image from OpenAI.");
+        const status = getErrorStatus(imgError);
+        if (status === 401 || status === 403 || status === 429) {
+          throw new HttpError(
+            extractErrorMessage(
+              imgError,
+              "OpenAI did not return an image. Please try again with a clear JPEG or PNG photo."
+            ),
+            status
+          );
+        }
+
+        if (shouldFallbackModel(imgError) || status === 404 || candidate === "gpt-image-2") {
+          break;
+        }
+
+        throw new HttpError(
+          extractErrorMessage(
+            imgError,
+            "OpenAI did not return an image. Please try again with a clear JPEG or PNG photo."
+          ),
+          status ?? 500
+        );
       }
-      const arrayBuffer = await imageResponse.arrayBuffer();
-      const outB64 = Buffer.from(arrayBuffer).toString("base64");
-      const contentType = imageResponse.headers.get("content-type") || "image/jpeg";
-      return `data:${contentType};base64,${outB64}`;
     }
-
-    throw new Error("OpenAI did not return an image. Please try again with a clear JPEG or PNG photo.");
-  } catch (imgError: unknown) {
-    throw new Error(
-      extractErrorMessage(
-        imgError,
-        "OpenAI did not return an image. Please try again with a clear JPEG or PNG photo."
-      )
-    );
   }
+
+  throw new HttpError(
+    extractErrorMessage(
+      lastError,
+      "OpenAI did not return an image. Please try again with a clear JPEG or PNG photo."
+    ),
+    getErrorStatus(lastError) ?? 500
+  );
 }
 
 async function generateCopy(
@@ -332,8 +444,10 @@ export async function generatePhoto(
       parseOpenAiImageModel(params.openaiImageModel)
     );
   } catch (imageErr) {
-    throw new Error(
-      extractErrorMessage(imageErr, "Failed to generate a studio photo. Please try again.")
+    if (imageErr instanceof HttpError) throw imageErr;
+    throw new HttpError(
+      extractErrorMessage(imageErr, "Failed to generate a studio photo. Please try again."),
+      getErrorStatus(imageErr) ?? 500
     );
   }
 

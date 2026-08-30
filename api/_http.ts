@@ -11,6 +11,16 @@ export async function handleJsonPost(
     return Response.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
-  const result = await run(body);
-  return Response.json(result.body, { status: result.status });
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return Response.json({ error: "Invalid JSON body." }, { status: 400 });
+  }
+
+  try {
+    const result = await run(body);
+    return Response.json(result.body, { status: result.status });
+  } catch (error: unknown) {
+    console.error("Unhandled API error:", error);
+    const message = error instanceof Error ? error.message : "Server error.";
+    return Response.json({ error: message }, { status: 500 });
+  }
 }

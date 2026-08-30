@@ -1,4 +1,4 @@
-import { improveDescription, generatePhoto } from "./ai";
+import { improveDescription, generatePhoto, HttpError } from "./ai";
 import { parseOpenAiImageModel, parseProductKind, sizeCmForProduct } from "../src/types";
 
 export type JsonBody = Record<string, unknown>;
@@ -53,27 +53,29 @@ export async function runImproveDescription(body: JsonBody): Promise<ApiResult> 
 }
 
 export async function runGeneratePhoto(body: JsonBody): Promise<ApiResult> {
-  const imageBase64 = asString(body.imageBase64);
-  const mimeType = asString(body.mimeType, "image/jpeg");
-  const productKind = parseProductKind(body.productKind);
-  const productName =
-    asString(body.productName).trim() || (productKind === "flowers" ? "Bouquet" : "Toy");
-  const toySizeCm = sizeCmForProduct(productKind, body.toySizeCm as string | number | undefined) ?? (productKind === "toy" ? 20 : undefined);
-  const productDescription = asString(body.productDescription);
-  const style = asString(body.style, "clean-catalog");
-  const personScale = asString(body.personScale, "none");
-  const openaiImageModel = parseOpenAiImageModel(
-    body.openaiImageModel ?? body.openaiImageMode
-  );
-
-  if (!imageBase64) {
-    return {
-      status: 400,
-      body: { error: "Missing required reference image." },
-    };
-  }
-
   try {
+    const imageBase64 = asString(body.imageBase64);
+    const mimeType = asString(body.mimeType, "image/jpeg");
+    const productKind = parseProductKind(body.productKind);
+    const productName =
+      asString(body.productName).trim() || (productKind === "flowers" ? "Bouquet" : "Toy");
+    const toySizeCm =
+      sizeCmForProduct(productKind, body.toySizeCm as string | number | undefined) ??
+      (productKind === "toy" ? 20 : undefined);
+    const productDescription = asString(body.productDescription);
+    const style = asString(body.style, "clean-catalog");
+    const personScale = asString(body.personScale, "none");
+    const openaiImageModel = parseOpenAiImageModel(
+      body.openaiImageModel ?? body.openaiImageMode
+    );
+
+    if (!imageBase64) {
+      return {
+        status: 400,
+        body: { error: "Missing required reference image." },
+      };
+    }
+
     const aiConfig = parseAiConfig(body);
     const result = await generatePhoto(aiConfig, {
       imageBase64,
@@ -103,7 +105,13 @@ export async function runGeneratePhoto(body: JsonBody): Promise<ApiResult> {
     console.error("Error in /api/generate-photo:", error);
     const message =
       error instanceof Error ? error.message : "An error occurred while generating the studio photo.";
-    return { status: 500, body: { error: message } };
+    const status =
+      error instanceof HttpError
+        ? error.status
+        : error && typeof error === "object" && "status" in error && typeof (error as { status: unknown }).status === "number"
+          ? (error as { status: number }).status
+          : 500;
+    return { status: status >= 400 && status < 600 ? status : 500, body: { error: message } };
   }
 }
 

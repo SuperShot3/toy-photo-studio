@@ -19,6 +19,7 @@ import { isPromoStyle } from './utils/promoOverlay';
 import { Sparkles, Loader2, AlertCircle, ShieldCheck, CheckCircle, Zap } from 'lucide-react';
 import { loadApiSettings, saveApiSettings, getActiveApiKey, isApiKeyConfigured } from './utils/apiSettings';
 import { readApiError, readNetworkError } from './utils/apiError';
+import { normalizeReferenceImage } from './utils/normalizeImage';
 import { getShotPrice } from './utils/generationPricing';
 import {
   MAX_SESSION_SHOTS,
@@ -188,12 +189,14 @@ export default function App() {
     }, 4500);
 
     try {
+      const reference = await normalizeReferenceImage(imagePreviewUrl);
+
       const response = await fetch('/api/generate-photo', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          imageBase64: imagePreviewUrl,
-          mimeType: mimeType || 'image/jpeg',
+          imageBase64: reference.dataUrl,
+          mimeType: reference.mimeType || mimeType || 'image/jpeg',
           productName: productName.trim(),
           toySizeCm: sizeCmForProduct(productKind, toySizeCm) ?? (productKind === 'toy' ? '20' : undefined),
           productDescription: description.trim(),

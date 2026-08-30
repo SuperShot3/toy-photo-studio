@@ -5,7 +5,7 @@
   "outputDirectory": "dist",
   "functions": {
     "api/generate-photo.ts": {
-      "maxDuration": 300
+      "maxDuration": 60
     },
     "api/improve-description.ts": {
       "maxDuration": 60

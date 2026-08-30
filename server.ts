@@ -18,13 +18,23 @@ app.get("/api/health", (_req: Request, res: Response) => {
 });
 
 app.post("/api/improve-description", async (req: Request, res: Response): Promise<void> => {
-  const result = await runImproveDescription(req.body);
-  res.status(result.status).json(result.body);
+  try {
+    const result = await runImproveDescription(req.body ?? {});
+    res.status(result.status).json(result.body);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Server error.";
+    res.status(500).json({ error: message });
+  }
 });
 
 app.post("/api/generate-photo", async (req: Request, res: Response): Promise<void> => {
-  const result = await runGeneratePhoto(req.body);
-  res.status(result.status).json(result.body);
+  try {
+    const result = await runGeneratePhoto(req.body ?? {});
+    res.status(result.status).json(result.body);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Server error.";
+    res.status(500).json({ error: message });
+  }
 });
 
 app.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {

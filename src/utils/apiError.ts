@@ -12,20 +12,32 @@ function apiUnavailableMessage(): string {
   return 'The photo API is not available on this deployment. Redeploy the latest version that includes /api routes.';
 }
 
+function messageFromJson(data: {
+  error?: string | { message?: string };
+  message?: string;
+}): string | null {
+  if (typeof data.error === 'string' && data.error.trim()) return data.error;
+  if (data.error && typeof data.error === 'object' && data.error.message) {
+    return data.error.message;
+  }
+  if (typeof data.message === 'string' && data.message.trim()) return data.message;
+  return null;
+}
+
 export async function readApiError(response: Response, fallback: string): Promise<string> {
-  const contentType = response.headers.get('content-type') || '';
+  const raw = await response.text().catch(() => '');
+  const trimmed = raw.trim();
 
-  if (contentType.includes('application/json')) {
-    const data = (await response.json().catch(() => ({}))) as {
-      error?: string | { message?: string };
-      message?: string;
-    };
-
-    if (typeof data.error === 'string' && data.error.trim()) return data.error;
-    if (data.error && typeof data.error === 'object' && data.error.message) {
-      return data.error.message;
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    try {
+      const fromJson = messageFromJson(JSON.parse(trimmed) as {
+        error?: string | { message?: string };
+        message?: string;
+      });
+      if (fromJson) return fromJson;
+    } catch {
+      // Not JSON — fall through to status-based messages.
     }
-    if (typeof data.message === 'string' && data.message.trim()) return data.message;
   }
 
   if (response.status === 404) {
@@ -36,8 +48,16 @@ export async function readApiError(response: Response, fallback: string): Promis
     return 'The photo is too large. Try a smaller JPEG or PNG.';
   }
 
-  if (response.status === 504 || response.status === 524) {
+  if (
+    response.status === 504 ||
+    response.status === 524 ||
+    /FUNCTION_INVOCATION_TIMEOUT|timeout/i.test(trimmed)
+  ) {
     return 'The studio shot took too long to generate. Please try again.';
+  }
+
+  if (trimmed && trimmed.length < 400 && !/<\/?html/i.test(trimmed) && !trimmed.startsWith('<')) {
+    return trimmed;
   }
 
   if (response.status >= 500) {
