@@ -2,7 +2,7 @@ import type { ImageStyle, PersonScale, ProductKind } from "../src/types";
 
 export interface StudioPromptParams {
   productName: string;
-  toySizeCm: string | number;
+  toySizeCm?: string | number;
   productDescription: string;
   productKind: ProductKind;
   style: ImageStyle;
@@ -122,27 +122,37 @@ STYLE 3 — LUXURY PROMO:
   };
 }
 
+function hasNumericSize(toySizeCm: string | number | undefined): boolean {
+  if (toySizeCm === undefined || toySizeCm === null) return false;
+  return String(toySizeCm).trim() !== "";
+}
+
 function buildPersonScaleInstructions(
   personScale: PersonScale,
-  toySizeCm: string | number,
+  toySizeCm: string | number | undefined,
   floral: boolean
 ): string {
   const subject = floral ? "flowers" : "toy";
-  const heightLabel = floral ? "arrangement height" : "toy height";
+  const toyScaleLine = hasNumericSize(toySizeCm)
+    ? `- VISUAL SCALE ACCURACY: The entered toy height is ${toySizeCm} cm. The scale of the toy relative to the child's hands and torso must realistically match ${toySizeCm} cm.`
+    : `- Keep the toy at a natural, realistic scale relative to the child's hands and torso.`;
+  const toyAdultScaleLine = hasNumericSize(toySizeCm)
+    ? `- VISUAL SCALE ACCURACY: The entered toy height is ${toySizeCm} cm. The scale of the toy relative to the adult hands/body must realistically match ${toySizeCm} cm.`
+    : `- Keep the toy at a natural, realistic scale relative to the adult hands/body.`;
 
   if (personScale === "child") {
     return floral
       ? `
 PERSON FOR SIZE REFERENCE:
 - Include a realistic, cheerful child (approx 4-7 years old) naturally receiving or gently holding the bouquet as a gift.
-- VISUAL SCALE ACCURACY: The entered ${heightLabel} is ${toySizeCm} cm. The scale of the flowers relative to the child's hands and torso must realistically match ${toySizeCm} cm.
+- Keep the flowers at a natural, realistic scale relative to the child's hands and torso.
 - The flowers must remain the unobstructed, crisp main hero subject in the foreground.
 - The child must look natural, warm, and candid without covering key blooms.
 `
       : `
 PERSON FOR SIZE REFERENCE:
 - Include a realistic, cheerful child (approx 4-7 years old) naturally sitting next to or gently holding/interacting with the toy.
-- VISUAL SCALE ACCURACY: The entered ${heightLabel} is ${toySizeCm} cm. The scale of the toy relative to the child's hands and torso must realistically match ${toySizeCm} cm.
+${toyScaleLine}
 - The toy must remain the unobstructed, crisp main hero subject in the foreground.
 - The child must look natural, warm, and candid without covering key toy features.
 `;
@@ -153,13 +163,13 @@ PERSON FOR SIZE REFERENCE:
       ? `
 PERSON FOR SIZE REFERENCE:
 - Include realistic adult florist or gift-giver hands gently holding, presenting, or arranging the flowers for clear visual scale comparison.
-- VISUAL SCALE ACCURACY: The entered ${heightLabel} is ${toySizeCm} cm. The scale of the flowers relative to the adult hands/body must realistically match ${toySizeCm} cm.
+- Keep the flowers at a natural, realistic scale relative to the adult hands/body.
 - The flowers must remain the unobstructed, sharp focal hero of the composition.
 `
       : `
 PERSON FOR SIZE REFERENCE:
 - Include a realistic adult (hands gently holding or presenting the toy, or standing/sitting naturally beside it) for clear visual scale comparison.
-- VISUAL SCALE ACCURACY: The entered ${heightLabel} is ${toySizeCm} cm. The scale of the toy relative to the adult hands/body must realistically match ${toySizeCm} cm.
+${toyAdultScaleLine}
 - The toy must remain the unobstructed, sharp focal hero of the composition.
 `;
   }
@@ -222,10 +232,15 @@ export function buildStudioPrompt(params: StudioPromptParams): string {
     floral
   );
   const subjectLabel = floral ? "flowers / bouquet" : "toy";
+  const productLine = floral
+    ? `The product is "${productName || "Bouquet"}".`
+    : hasNumericSize(toySizeCm)
+      ? `The product is "${productName}" (${toySizeCm} cm tall).`
+      : `The product is "${productName}".`;
 
   return `
 ${buildPreservationRules(floral)}
-The product is "${productName}" (${toySizeCm} cm ${floral ? "tall arrangement" : "tall"}).
+${productLine}
 
 ${styleInstructions}
 
@@ -251,13 +266,12 @@ You are a professional e-commerce copywriter specializing in flowers, bouquets, 
 
 Based on the provided flower details:
 - Product name input: "${productName || "Bouquet"}"
-- Physical size: ${toySizeCm ? `${toySizeCm} cm` : "Not specified"}
 - Rough user notes/description: "${roughDescription || ""}"
 
 Return a JSON object with EXACTLY these three keys:
 1. "productTitle": A clean, SEO-optimized, appealing e-commerce title (approx 5-10 words). Include bloom type and arrangement style.
 2. "sellingLine": A single, punchy, emotive one-liner selling hook (10-20 words).
-3. "productDescription": A concise, polished 2-3 paragraph marketing description highlighting bloom variety, color, freshness, occasion (gift, wedding, home), and how it will look on arrival. Do NOT mention toys, play, or age suitability.
+3. "productDescription": A concise, polished 2-3 paragraph marketing description highlighting bloom variety, color, freshness, occasion (gift, wedding, home), and how it will look on arrival. Do NOT mention toys, play, size in cm, or age suitability.
 
 Respond strictly with valid JSON only. Do not include markdown ticks or code fences if possible.
 `;
@@ -282,7 +296,7 @@ Respond strictly with valid JSON only. Do not include markdown ticks or code fen
 
 export function buildCopyPrompt(params: {
   productName: string;
-  toySizeCm: string | number;
+  toySizeCm?: string | number;
   productKind?: ProductKind;
   style: ImageStyle;
   personScale: PersonScale;
@@ -301,28 +315,32 @@ export function buildCopyPrompt(params: {
     return `
 Generate concise e-commerce copy for this floral product:
 - Product name: "${productName}"
-- Size: ${toySizeCm} cm
 - Style rendered: ${style} (${scaleNote})
 - Notes: "${productDescription}"
 
 Return a JSON object with:
 1. "productTitle": High-converting e-commerce listing title (florist / Etsy style).
 2. "sellingLine": One short selling line / hook.
-3. "marketingDescription": 2-3 short paragraphs describing why buyers will love it, its size (${toySizeCm} cm), bloom quality, occasion, and gift appeal. Do not mention toys or play.
+3. "marketingDescription": 2-3 short paragraphs describing why buyers will love it, bloom quality, occasion, and gift appeal. Do not mention toys, play, or a size in cm.
 `;
   }
+
+  const sizeLine = hasNumericSize(toySizeCm) ? `- Size: ${toySizeCm} cm` : "- Size: Not specified";
+  const sizeCopy = hasNumericSize(toySizeCm)
+    ? `its size (${toySizeCm} cm), craftsmanship, and play/gift appeal`
+    : "craftsmanship, and play/gift appeal";
 
   return `
 Generate concise e-commerce copy for this toy product:
 - Product name: "${productName}"
-- Size: ${toySizeCm} cm
+${sizeLine}
 - Style rendered: ${style} (${scaleNote})
 - Notes: "${productDescription}"
 
 Return a JSON object with:
 1. "productTitle": High-converting e-commerce listing title (e.g. Amazon/Etsy style).
 2. "sellingLine": One short selling line / hook.
-3. "marketingDescription": 2-3 short paragraphs describing why buyers will love it, its size (${toySizeCm} cm), craftsmanship, and play/gift appeal.
+3. "marketingDescription": 2-3 short paragraphs describing why buyers will love it, ${sizeCopy}.
 `;
 }
 

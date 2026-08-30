@@ -1,5 +1,5 @@
 import { improveDescription, generatePhoto } from "./ai";
-import { parseOpenAiImageModel, parseProductKind } from "../src/types";
+import { parseOpenAiImageModel, parseProductKind, sizeCmForProduct } from "../src/types";
 
 export type JsonBody = Record<string, unknown>;
 
@@ -56,8 +56,9 @@ export async function runGeneratePhoto(body: JsonBody): Promise<ApiResult> {
   const imageBase64 = asString(body.imageBase64);
   const mimeType = asString(body.mimeType, "image/jpeg");
   const productKind = parseProductKind(body.productKind);
-  const productName = asString(body.productName, productKind === "flowers" ? "Bouquet" : "Toy");
-  const toySizeCm = (body.toySizeCm as string | number | undefined) ?? 20;
+  const productName =
+    asString(body.productName).trim() || (productKind === "flowers" ? "Bouquet" : "Toy");
+  const toySizeCm = sizeCmForProduct(productKind, body.toySizeCm as string | number | undefined) ?? (productKind === "toy" ? 20 : undefined);
   const productDescription = asString(body.productDescription);
   const style = asString(body.style, "clean-catalog");
   const personScale = asString(body.personScale, "none");

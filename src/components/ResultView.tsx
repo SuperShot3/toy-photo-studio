@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Download, RefreshCw, Copy, Check, ArrowDownToLine, Type } from 'lucide-react';
-import { GeneratedResult } from '../types';
+import { GeneratedResult, sizeCmForProduct } from '../types';
 import { BeforeAfterSlider } from './BeforeAfterSlider';
 import { composePromoOverlay, isPromoStyle } from '../utils/promoOverlay';
 
@@ -19,6 +19,7 @@ export const ResultView: React.FC<ResultViewProps> = ({
 }) => {
   const [copied, setCopied] = useState(false);
   const promo = isPromoStyle(result.style);
+  const sizeCm = sizeCmForProduct(result.productKind, result.toySizeCm);
   const [overlayOn, setOverlayOn] = useState(promo);
   const [headline, setHeadline] = useState(result.productName || result.productTitle);
   const [tagline, setTagline] = useState(result.sellingLine);
@@ -47,7 +48,7 @@ export const ResultView: React.FC<ResultViewProps> = ({
         style: result.style,
         headline: headline.trim() || result.productName || 'Product',
         tagline: tagline.trim(),
-        sizeLabel: result.toySizeCm ? `${result.toySizeCm} cm` : '',
+        sizeLabel: sizeCm ? `${sizeCm} cm` : '',
       })
         .then((url) => {
           if (!cancelled) setDisplayImage(url);
@@ -72,7 +73,7 @@ export const ResultView: React.FC<ResultViewProps> = ({
     result.imageUrl,
     result.style,
     result.productName,
-    result.toySizeCm,
+    sizeCm,
   ]);
 
   const handleDownload = () => {
@@ -96,7 +97,12 @@ export const ResultView: React.FC<ResultViewProps> = ({
   };
 
   const handleCopyListing = async () => {
-    const listingText = `📦 PRODUCT TITLE:\n${result.productTitle}\n\n✨ SELLING HOOK:\n${result.sellingLine}\n\n📝 PRODUCT DESCRIPTION:\n${result.marketingDescription}\n\n📏 SPECIFICATIONS:\n- Dimensions: ~${result.toySizeCm} cm\n- Photography Style: ${result.style.replace('-', ' ').toUpperCase()}\n- Visual Reference: ${result.personScale === 'none' ? 'Solo Product' : result.personScale === 'child' ? 'With Child Scale Reference' : 'With Adult Scale Reference'}`;
+    const specLines = [
+      ...(sizeCm ? [`- Dimensions: ~${sizeCm} cm`] : []),
+      `- Photography Style: ${result.style.replace('-', ' ').toUpperCase()}`,
+      `- Visual Reference: ${result.personScale === 'none' ? 'Solo Product' : result.personScale === 'child' ? 'With Child Scale Reference' : 'With Adult Scale Reference'}`,
+    ];
+    const listingText = `📦 PRODUCT TITLE:\n${result.productTitle}\n\n✨ SELLING HOOK:\n${result.sellingLine}\n\n📝 PRODUCT DESCRIPTION:\n${result.marketingDescription}\n\n📏 SPECIFICATIONS:\n${specLines.join('\n')}`;
 
     try {
       await navigator.clipboard.writeText(listingText);
@@ -260,7 +266,11 @@ export const ResultView: React.FC<ResultViewProps> = ({
               </li>
               <li className="flex items-center gap-2">
                 <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full shrink-0"></span>
-                <span>Studio soft-box lighting applied (~{result.toySizeCm}cm calibrated)</span>
+                <span>
+                  {sizeCm
+                    ? `Studio soft-box lighting applied (~${sizeCm}cm calibrated)`
+                    : 'Studio soft-box lighting applied'}
+                </span>
               </li>
               <li className="flex items-center gap-2">
                 <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full shrink-0"></span>

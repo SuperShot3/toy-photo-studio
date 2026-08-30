@@ -14,7 +14,8 @@ import { ModelSelector } from './components/ModelSelector';
 import { ResultView } from './components/ResultView';
 import { SessionGallery } from './components/SessionGallery';
 import { ApiSettingsPanel } from './components/ApiSettingsPanel';
-import { ImageStyle, PersonScale, ProductKind, GeneratedResult, ImprovedDescriptionResponse, ApiSettings, OpenAiImageModel, parseProductKind } from './types';
+import { ImageStyle, PersonScale, ProductKind, GeneratedResult, ImprovedDescriptionResponse, ApiSettings, OpenAiImageModel, parseProductKind, sizeCmForProduct } from './types';
+import { isPromoStyle } from './utils/promoOverlay';
 import { Sparkles, Loader2, AlertCircle, ShieldCheck, CheckCircle, Zap } from 'lucide-react';
 import { loadApiSettings, saveApiSettings, getActiveApiKey, isApiKeyConfigured } from './utils/apiSettings';
 import { readApiError, readNetworkError } from './utils/apiError';
@@ -85,11 +86,14 @@ export default function App() {
   }, []);
 
   const applyShotToForm = (shot: GeneratedResult) => {
+    const kind = parseProductKind(shot.productKind);
     setImagePreviewUrl(shot.originalImageUrl);
     setMimeType(mimeFromDataUrl(shot.originalImageUrl));
     setProductName(shot.productName);
-    setToySizeCm(String(shot.toySizeCm));
-    setProductKind(parseProductKind(shot.productKind));
+    setProductKind(kind);
+    if (kind !== 'flowers') {
+      setToySizeCm(sizeCmForProduct(kind, shot.toySizeCm) ?? '25');
+    }
     setDescription(shot.marketingDescription);
     setSelectedStyle(shot.style);
     setSelectedScale(shot.personScale);
@@ -152,10 +156,8 @@ export default function App() {
       return;
     }
 
-    if (!productName.trim()) {
-      setError(productKind === 'flowers'
-        ? 'Please enter a product name for your flowers.'
-        : 'Please enter a product name for your toy.');
+    if (isPromoStyle(selectedStyle) && !productName.trim()) {
+      setError('Please enter a product name. Promo prints this text on the image.');
       return;
     }
 
@@ -193,7 +195,7 @@ export default function App() {
           imageBase64: imagePreviewUrl,
           mimeType: mimeType || 'image/jpeg',
           productName: productName.trim(),
-          toySizeCm: toySizeCm || '20',
+          toySizeCm: sizeCmForProduct(productKind, toySizeCm) ?? (productKind === 'toy' ? '20' : undefined),
           productDescription: description.trim(),
           productKind,
           style: selectedStyle,
@@ -225,7 +227,7 @@ export default function App() {
         style: selectedStyle,
         personScale: selectedScale,
         productName: productName,
-        toySizeCm: toySizeCm,
+        toySizeCm: sizeCmForProduct(productKind, toySizeCm),
         productKind,
         generatedAt: new Date().toISOString(),
       };
@@ -294,6 +296,7 @@ export default function App() {
               toySizeCm={toySizeCm}
               onToySizeCmChange={setToySizeCm}
               productKind={productKind}
+              nameRequired={isPromoStyle(selectedStyle)}
               description={description}
               onDescriptionChange={setDescription}
               imageBase64={imagePreviewUrl}
@@ -312,7 +315,7 @@ export default function App() {
             <ScaleSelector
               selectedScale={selectedScale}
               onScaleSelect={setSelectedScale}
-              toySizeCm={toySizeCm}
+              toySizeCm={productKind === 'flowers' ? '' : toySizeCm}
             />
 
             <ModelSelector
@@ -432,7 +435,7 @@ export default function App() {
                   </p>
                   {(selectedStyle === 'styled-promo' || selectedStyle === 'luxury-promo') && (
                     <p className="text-[11px] text-slate-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 leading-relaxed">
-                      Promo prints the product name and a short selling line on the photo, so the shot is ready to post or sell. Catalog stays text-free.
+                      Promo prints the product name and a short selling line on the photo, so a name is required. Catalog stays text-free.
                     </p>
                   )}
                 </div>

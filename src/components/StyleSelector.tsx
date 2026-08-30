@@ -95,7 +95,7 @@ export const StyleSelector: React.FC<StyleSelectorProps> = ({
       {isPromoStyle(selectedStyle) ? (
         <p className="text-[10px] text-slate-500 leading-relaxed px-0.5">
           Promo prints the <span className="font-semibold text-slate-700">product name</span> and a
-          short selling line on the photo so it is ready to post or sell.
+          short selling line on the photo, so a name is required.
         </p>
       ) : (
         <p className="text-[10px] text-slate-500 leading-relaxed px-0.5">

@@ -6,6 +6,17 @@ export function parseProductKind(value: unknown): ProductKind {
   return value === 'flowers' ? 'flowers' : 'toy';
 }
 
+/** Size is a toy spec only. Flowers never carry a cm value. */
+export function sizeCmForProduct(
+  kind: ProductKind | undefined,
+  size: string | number | undefined | null
+): string | undefined {
+  if (parseProductKind(kind) === 'flowers') return undefined;
+  if (size === undefined || size === null) return undefined;
+  const trimmed = String(size).trim();
+  return trimmed || undefined;
+}
+
 export const OPENAI_IMAGE_MODELS = [
   'gpt-image-1-mini',
   'gpt-image-1',
@@ -37,7 +48,7 @@ export interface GeneratePhotoRequest {
   imageBase64: string;
   mimeType: string;
   productName: string;
-  toySizeCm: string | number;
+  toySizeCm?: string | number;
   productDescription?: string;
   productKind?: ProductKind;
   style: ImageStyle;
@@ -56,7 +67,7 @@ export interface GeneratedResult {
   style: ImageStyle;
   personScale: PersonScale;
   productName: string;
-  toySizeCm: string | number;
+  toySizeCm?: string | number;
   productKind?: ProductKind;
   generatedAt: string;
 }

@@ -223,7 +223,7 @@ async function generateCopy(
   config: AiConfig,
   params: {
     productName: string;
-    toySizeCm: string | number;
+    toySizeCm?: string | number;
     productKind?: ProductKind;
     style: ImageStyle;
     personScale: PersonScale;
@@ -236,12 +236,14 @@ async function generateCopy(
     ? {
         productTitle: params.productName || "Fresh Garden Bouquet",
         sellingLine: "True-to-life blooms, arranged for gifts, tables, and special days.",
-        marketingDescription: `Presenting ${params.productName} (${params.toySizeCm} cm). A studio-ready floral arrangement with natural color, foliage, and gift appeal.`,
+        marketingDescription: `Presenting ${params.productName || "this bouquet"}. A studio-ready floral arrangement with natural color, foliage, and gift appeal.`,
       }
     : {
         productTitle: params.productName || "Handcrafted Premium Toy",
         sellingLine: "Capture hearts with timeless charm and irresistible playtime quality.",
-        marketingDescription: `Presenting the ${params.productName} (${params.toySizeCm} cm). Lovingly crafted with premium attention to detail, perfect for imaginative play or as a cherished keepsake.`,
+        marketingDescription: params.toySizeCm
+          ? `Presenting the ${params.productName} (${params.toySizeCm} cm). Lovingly crafted with premium attention to detail, perfect for imaginative play or as a cherished keepsake.`
+          : `Presenting the ${params.productName}. Lovingly crafted with premium attention to detail, perfect for imaginative play or as a cherished keepsake.`,
       };
 
   const copyPrompt = buildCopyPrompt(params);
@@ -267,20 +269,22 @@ async function generateCopy(
 
 function copyFallback(
   productName: string,
-  toySizeCm: string | number,
+  toySizeCm: string | number | undefined,
   productKind: ProductKind
 ): GeneratedCopyResult {
   if (parseProductKind(productKind) === "flowers") {
     return {
       productTitle: productName || "Fresh Garden Bouquet",
       sellingLine: "True-to-life blooms, arranged for gifts, tables, and special days.",
-      marketingDescription: `Presenting ${productName} (${toySizeCm} cm). A studio-ready floral arrangement with natural color, foliage, and gift appeal.`,
+      marketingDescription: `Presenting ${productName || "this bouquet"}. A studio-ready floral arrangement with natural color, foliage, and gift appeal.`,
     };
   }
   return {
     productTitle: productName || "Handcrafted Premium Toy",
     sellingLine: "Capture hearts with timeless charm and irresistible playtime quality.",
-    marketingDescription: `Presenting the ${productName} (${toySizeCm} cm). Lovingly crafted with premium attention to detail, perfect for imaginative play or as a cherished keepsake.`,
+    marketingDescription: toySizeCm
+      ? `Presenting the ${productName} (${toySizeCm} cm). Lovingly crafted with premium attention to detail, perfect for imaginative play or as a cherished keepsake.`
+      : `Presenting the ${productName}. Lovingly crafted with premium attention to detail, perfect for imaginative play or as a cherished keepsake.`,
   };
 }
 
@@ -290,7 +294,7 @@ export async function generatePhoto(
     imageBase64: string;
     mimeType: string;
     productName: string;
-    toySizeCm: string | number;
+    toySizeCm?: string | number;
     productDescription: string;
     productKind?: ProductKind;
     style: ImageStyle;
