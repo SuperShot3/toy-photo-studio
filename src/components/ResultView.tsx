@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Download, RefreshCw, Copy, Check, ArrowDownToLine, Type, Sun, RotateCw, Crop } from 'lucide-react';
-import { GeneratedResult, parseProductKind, sizeCmForProduct } from '../types';
+import { Download, RefreshCw, ArrowDownToLine, Type, Sun, RotateCw, Crop } from 'lucide-react';
+import { GeneratedResult, sizeCmForProduct } from '../types';
 import { BeforeAfterSlider } from './BeforeAfterSlider';
 import { ImageLightbox } from './ImageLightbox';
 import { formatElapsed } from '../utils/formatElapsed';
@@ -66,15 +66,13 @@ export const ResultView: React.FC<ResultViewProps> = ({
   shotPriceLabel,
   elapsedMs = 0,
 }) => {
-  const [copied, setCopied] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const promo = isPromoStyle(result.style);
   const sizeCm = sizeCmForProduct(result.productKind, result.toySizeCm);
-  const floral = parseProductKind(result.productKind) === 'flowers';
   const [overlayOn, setOverlayOn] = useState(promo);
   const [logoOn, setLogoOn] = useState(false);
   const [headline, setHeadline] = useState(result.productName || result.productTitle);
-  const [tagline, setTagline] = useState(result.sellingLine);
+  const [tagline, setTagline] = useState('');
   const [brightness, setBrightness] = useState(BRIGHTNESS_DEFAULT);
   const [contrast, setContrast] = useState(CONTRAST_DEFAULT);
   const [saturation, setSaturation] = useState(SATURATION_DEFAULT);
@@ -105,7 +103,7 @@ export const ResultView: React.FC<ResultViewProps> = ({
     setOverlayOn(isPromoStyle(result.style));
     setLogoOn(false);
     setHeadline(result.productName || result.productTitle);
-    setTagline(result.sellingLine);
+    setTagline('');
     setBrightness(BRIGHTNESS_DEFAULT);
     setContrast(CONTRAST_DEFAULT);
     setSaturation(SATURATION_DEFAULT);
@@ -113,7 +111,7 @@ export const ResultView: React.FC<ResultViewProps> = ({
     setAspect('original');
     setRotateDeg(0);
     setDisplayImage(result.imageUrl);
-  }, [result.imageUrl, result.style, result.productName, result.productTitle, result.sellingLine]);
+  }, [result.imageUrl, result.style, result.productName, result.productTitle]);
 
   useEffect(() => {
     if (!printName && !logoOn && !editsChanged) {
@@ -194,33 +192,6 @@ export const ResultView: React.FC<ResultViewProps> = ({
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-  };
-
-  const handleCopyListing = async () => {
-    const specLines = [
-      ...(sizeCm ? [`- Dimensions: ~${sizeCm} cm`] : []),
-      `- Photography Style: ${result.style.replace('-', ' ').toUpperCase()}`,
-      ...(floral
-        ? []
-        : [
-            `- Visual Reference: ${
-              result.personScale === 'none'
-                ? 'Solo Product'
-                : result.personScale === 'child'
-                  ? 'With Child Scale Reference'
-                  : 'With Adult Scale Reference'
-            }`,
-          ]),
-    ];
-    const listingText = `📦 PRODUCT TITLE:\n${result.productTitle}\n\n✨ SELLING HOOK:\n${result.sellingLine}\n\n📝 PRODUCT DESCRIPTION:\n${result.marketingDescription}\n\n📏 SPECIFICATIONS:\n${specLines.join('\n')}`;
-
-    try {
-      await navigator.clipboard.writeText(listingText);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2500);
-    } catch (err) {
-      console.error('Failed to copy to clipboard', err);
-    }
   };
 
   const timingLabel = isRegenerating
@@ -495,88 +466,47 @@ export const ResultView: React.FC<ResultViewProps> = ({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-2 border-t border-slate-100">
-        <div className="space-y-3">
-          <div className="flex justify-between items-start gap-2">
-            <h2 className="text-base font-bold text-slate-900 leading-snug">
-              {result.productTitle}
-            </h2>
-            <button
-              type="button"
-              onClick={handleCopyListing}
-              className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 whitespace-nowrap cursor-pointer flex items-center gap-1 shrink-0"
-            >
-              {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-              {copied ? 'Copied' : 'Copy'}
-            </button>
-          </div>
-
-          <p className="text-xs text-indigo-700 font-bold tracking-widest uppercase">
-            {result.sellingLine}
-          </p>
-
-          <p className="text-xs sm:text-sm text-slate-500 leading-relaxed whitespace-pre-line">
-            {result.marketingDescription}
-          </p>
+      <div className="flex flex-col sm:flex-row sm:items-end gap-4 pt-2 border-t border-slate-100">
+        <div className="flex-1 bg-slate-50 rounded-xl p-4 border border-slate-100 space-y-2">
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Model Guidance & Specs</p>
+          <ul className="text-[11px] text-slate-600 space-y-1.5">
+            <li className="flex items-center gap-2">
+              <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full shrink-0"></span>
+              <span>Subject integrity preserved (1:1 geometry)</span>
+            </li>
+            <li className="flex items-center gap-2">
+              <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full shrink-0"></span>
+              <span>
+                {sizeCm
+                  ? `Studio soft-box lighting applied (~${sizeCm}cm calibrated)`
+                  : 'Studio soft-box lighting applied'}
+              </span>
+            </li>
+            <li className="flex items-center gap-2">
+              <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full shrink-0"></span>
+              <span>
+                {printName && logoOn
+                  ? 'Product name and brand logo printed on the photo'
+                  : printName
+                    ? 'Product name printed on the photo for ads and social'
+                    : logoOn
+                      ? 'Brand logo stamped in the top-right of the photo'
+                      : promo
+                        ? 'Promo type is off — download is the clean studio shot'
+                        : 'Text-free catalog frame for Amazon and Shopify'}
+              </span>
+            </li>
+          </ul>
         </div>
 
-        <div className="flex flex-col justify-between gap-3">
-          <div className="bg-slate-50 rounded-xl p-4 border border-slate-100 space-y-2">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Model Guidance & Specs</p>
-            <ul className="text-[11px] text-slate-600 space-y-1.5">
-              <li className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full shrink-0"></span>
-                <span>Subject integrity preserved (1:1 geometry)</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full shrink-0"></span>
-                <span>
-                  {sizeCm
-                    ? `Studio soft-box lighting applied (~${sizeCm}cm calibrated)`
-                    : 'Studio soft-box lighting applied'}
-                </span>
-              </li>
-              <li className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full shrink-0"></span>
-                <span>
-                  {printName && logoOn
-                    ? 'Product name and brand logo printed on the photo'
-                    : printName
-                      ? 'Product name printed on the photo for ads and social'
-                      : logoOn
-                        ? 'Brand logo stamped in the top-right of the photo'
-                        : promo
-                          ? 'Promo type is off — download is the clean studio shot'
-                          : 'Text-free catalog frame for Amazon and Shopify'}
-                </span>
-              </li>
-            </ul>
-          </div>
-
-          <div className="space-y-2">
-            <button
-              type="button"
-              onClick={handleDownload}
-              className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs"
-            >
-              <ArrowDownToLine className="w-4 h-4" />
-              {printName || logoOn ? 'Download Designed Promo Image' : 'Download High-Res Studio Image'}
-            </button>
-
-            <button
-              type="button"
-              onClick={handleCopyListing}
-              className={`w-full py-2.5 rounded-lg text-xs font-bold border transition-colors flex items-center justify-center gap-1.5 cursor-pointer ${
-                copied
-                  ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
-                  : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700'
-              }`}
-            >
-              {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-              {copied ? 'Listing Copied to Clipboard!' : 'Copy Full E-Commerce Listing'}
-            </button>
-          </div>
-        </div>
+        <button
+          type="button"
+          onClick={handleDownload}
+          className="w-full sm:w-64 py-3 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs shrink-0"
+        >
+          <ArrowDownToLine className="w-4 h-4" />
+          {printName || logoOn ? 'Download Designed Promo Image' : 'Download High-Res Studio Image'}
+        </button>
       </div>
 
       <ImageLightbox

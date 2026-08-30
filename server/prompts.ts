@@ -371,66 +371,10 @@ Respond strictly with valid JSON only. Do not include markdown ticks or code fen
 `;
 }
 
-export function buildCopyPrompt(params: {
-  productName: string;
-  toySizeCm?: string | number;
-  productKind?: ProductKind;
-  style: ImageStyle;
-  personScale: PersonScale;
-  productDescription: string;
-}): string {
-  const { productName, toySizeCm, productKind, style, personScale, productDescription } = params;
-  const floral = isFloral(productKind ?? "toy");
-  const scaleNote =
-    personScale === "none"
-      ? "solo product"
-      : personScale === "child"
-        ? "with child for scale"
-        : "with adult for scale";
-
-  if (floral) {
-    return `
-Generate concise e-commerce copy for this floral product:
-- Product name: "${productName}"
-- Style rendered: ${style} (${scaleNote})
-- Notes: "${productDescription}"
-
-Return a JSON object with:
-1. "productTitle": High-converting e-commerce listing title (florist / Etsy style).
-2. "sellingLine": One short selling line / hook.
-3. "marketingDescription": 2-3 short paragraphs describing why buyers will love it, bloom quality, occasion, and gift appeal. Do not mention toys, play, or a size in cm.
-`;
-  }
-
-  const sizeLine = hasNumericSize(toySizeCm) ? `- Size: ${toySizeCm} cm` : "- Size: Not specified";
-  const sizeCopy = hasNumericSize(toySizeCm)
-    ? `its size (${toySizeCm} cm), craftsmanship, and play/gift appeal`
-    : "craftsmanship, and play/gift appeal";
-
-  return `
-Generate concise e-commerce copy for this toy product:
-- Product name: "${productName}"
-${sizeLine}
-- Style rendered: ${style} (${scaleNote})
-- Notes: "${productDescription}"
-
-Return a JSON object with:
-1. "productTitle": High-converting e-commerce listing title (e.g. Amazon/Etsy style).
-2. "sellingLine": One short selling line / hook.
-3. "marketingDescription": 2-3 short paragraphs describing why buyers will love it, ${sizeCopy}.
-`;
-}
-
 export interface ImprovedCopyResult {
   productTitle: string;
   sellingLine: string;
   productDescription: string;
-}
-
-export interface GeneratedCopyResult {
-  productTitle: string;
-  sellingLine: string;
-  marketingDescription: string;
 }
 
 export function parseJsonFromText<T>(rawText: string, fallback: T): T {

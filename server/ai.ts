@@ -1,10 +1,8 @@
 import OpenAI, { toFile } from "openai";
 import {
-  buildCopyPrompt,
   buildImproveDescriptionPrompt,
   buildStudioPrompt,
   buildSubjectClassifyPrompt,
-  GeneratedCopyResult,
   ImprovedCopyResult,
   parseJsonFromText,
   StudioPromptParams,
@@ -411,75 +409,6 @@ async function generateImageOpenAI(
   );
 }
 
-async function generateCopy(
-  config: AiConfig,
-  params: {
-    productName: string;
-    toySizeCm?: string | number;
-    productKind?: ProductKind;
-    style: ImageStyle;
-    personScale: PersonScale;
-    productDescription: string;
-  }
-): Promise<GeneratedCopyResult> {
-  const apiKey = resolveApiKey(config);
-  const floral = parseProductKind(params.productKind) === "flowers";
-  const fallback: GeneratedCopyResult = floral
-    ? {
-        productTitle: params.productName || "Fresh Garden Bouquet",
-        sellingLine: "True-to-life blooms, arranged for gifts, tables, and special days.",
-        marketingDescription: `Presenting ${params.productName || "this bouquet"}. A studio-ready floral arrangement with natural color, foliage, and gift appeal.`,
-      }
-    : {
-        productTitle: params.productName || "Handcrafted Premium Toy",
-        sellingLine: "Capture hearts with timeless charm and irresistible playtime quality.",
-        marketingDescription: params.toySizeCm
-          ? `Presenting the ${params.productName} (${params.toySizeCm} cm). Lovingly crafted with premium attention to detail, perfect for imaginative play or as a cherished keepsake.`
-          : `Presenting the ${params.productName}. Lovingly crafted with premium attention to detail, perfect for imaginative play or as a cherished keepsake.`,
-      };
-
-  const copyPrompt = buildCopyPrompt(params);
-
-  const openai = getOpenAIClient(apiKey);
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [{ role: "user", content: copyPrompt }],
-    response_format: { type: "json_object" },
-  });
-
-  const copyJson = parseJsonFromText<Partial<GeneratedCopyResult>>(
-    response.choices[0]?.message?.content || "{}",
-    {}
-  );
-
-  return {
-    productTitle: copyJson.productTitle || fallback.productTitle,
-    sellingLine: copyJson.sellingLine || fallback.sellingLine,
-    marketingDescription: copyJson.marketingDescription || fallback.marketingDescription,
-  };
-}
-
-function copyFallback(
-  productName: string,
-  toySizeCm: string | number | undefined,
-  productKind: ProductKind
-): GeneratedCopyResult {
-  if (parseProductKind(productKind) === "flowers") {
-    return {
-      productTitle: productName || "Fresh Garden Bouquet",
-      sellingLine: "True-to-life blooms, arranged for gifts, tables, and special days.",
-      marketingDescription: `Presenting ${productName || "this bouquet"}. A studio-ready floral arrangement with natural color, foliage, and gift appeal.`,
-    };
-  }
-  return {
-    productTitle: productName || "Handcrafted Premium Toy",
-    sellingLine: "Capture hearts with timeless charm and irresistible playtime quality.",
-    marketingDescription: toySizeCm
-      ? `Presenting the ${productName} (${toySizeCm} cm). Lovingly crafted with premium attention to detail, perfect for imaginative play or as a cherished keepsake.`
-      : `Presenting the ${productName}. Lovingly crafted with premium attention to detail, perfect for imaginative play or as a cherished keepsake.`,
-  };
-}
-
 export async function generatePhoto(
   config: AiConfig,
   params: {
@@ -549,26 +478,11 @@ export async function generatePhoto(
     );
   }
 
-  let copy: GeneratedCopyResult;
-  try {
-    copy = await generateCopy(config, {
-      productName,
-      toySizeCm,
-      productKind,
-      style: params.style,
-      personScale: params.personScale,
-      productDescription: params.productDescription,
-    });
-  } catch (copyErr) {
-    console.warn("Copy generation notice:", copyErr);
-    copy = copyFallback(productName, toySizeCm, productKind);
-  }
-
   return {
     imageUrl,
-    productTitle: copy.productTitle,
-    sellingLine: copy.sellingLine,
-    marketingDescription: copy.marketingDescription,
+    productTitle: productName,
+    sellingLine: "",
+    marketingDescription: params.productDescription || "",
     productKind,
     productName,
     toySizeCm,

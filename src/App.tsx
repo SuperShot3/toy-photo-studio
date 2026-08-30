@@ -278,11 +278,7 @@ export default function App() {
         imageUrl: data.imageUrl,
         originalImageUrl: imagePreviewUrl,
         productTitle: data.productTitle || productName,
-        sellingLine:
-          data.sellingLine ||
-          (usedKind === 'flowers'
-            ? 'True-to-life blooms, arranged for gifts and special days.'
-            : 'High quality toy crafted for memorable play.'),
+        sellingLine: data.sellingLine || '',
         marketingDescription: data.marketingDescription || description,
         style: selectedStyle,
         personScale: usedKind === 'flowers' ? 'none' : selectedScale,
