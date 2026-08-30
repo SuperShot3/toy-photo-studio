@@ -45,7 +45,7 @@ export default function App() {
   const [mimeType, setMimeType] = useState<string>('image/jpeg');
   const [productName, setProductName] = useState<string>('');
   const [toySizeCm, setToySizeCm] = useState<string>('25');
-  const [productKind, setProductKind] = useState<ProductKind>('toy');
+  const [productKind, setProductKind] = useState<ProductKind>('flowers');
   const [description, setDescription] = useState<string>('');
 
   // Style and scale selections

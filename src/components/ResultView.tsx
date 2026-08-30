@@ -4,6 +4,7 @@ import { GeneratedResult, sizeCmForProduct } from '../types';
 import { BeforeAfterSlider } from './BeforeAfterSlider';
 import { ImageLightbox } from './ImageLightbox';
 import { formatElapsed } from '../utils/formatElapsed';
+import { isMobileSaveTarget, saveImage } from '../utils/saveImage';
 import {
   composePromoOverlay,
   isPromoStyle,
@@ -173,9 +174,15 @@ export const ResultView: React.FC<ResultViewProps> = ({
     sizeCm,
   ]);
 
+  const saveOnPhone = isMobileSaveTarget();
+  const saveLabel = saveOnPhone ? 'Save' : 'Download';
+  const saveCtaLabel = saveOnPhone
+    ? 'Save to Photos'
+    : printName || logoOn
+      ? 'Download Designed Promo Image'
+      : 'Download High-Res Studio Image';
+
   const handleDownload = () => {
-    const link = document.createElement('a');
-    link.href = displayImage;
     const sanitizedTitle = (result.productName || 'studio-photo')
       .toLowerCase()
       .replace(/[^a-z0-9]/g, '-');
@@ -188,10 +195,7 @@ export const ResultView: React.FC<ResultViewProps> = ({
         : mime.includes('webp')
           ? 'webp'
           : 'png';
-    link.download = `${sanitizedTitle}-${suffix}.${ext}`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    void saveImage(displayImage, `${sanitizedTitle}-${suffix}.${ext}`).catch(() => {});
   };
 
   const timingLabel = isRegenerating
@@ -254,7 +258,7 @@ export const ResultView: React.FC<ResultViewProps> = ({
             className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm shadow-indigo-100"
           >
             <Download className="w-3.5 h-3.5" />
-            Download
+            {saveLabel}
           </button>
         </div>
       </div>
@@ -505,7 +509,7 @@ export const ResultView: React.FC<ResultViewProps> = ({
           className="w-full sm:w-64 py-3 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs shrink-0"
         >
           <ArrowDownToLine className="w-4 h-4" />
-          {printName || logoOn ? 'Download Designed Promo Image' : 'Download High-Res Studio Image'}
+          {saveCtaLabel}
         </button>
       </div>
 
@@ -515,6 +519,7 @@ export const ResultView: React.FC<ResultViewProps> = ({
         alt={`${result.productName || 'Product'} studio result`}
         onClose={() => setLightboxOpen(false)}
         onDownload={handleDownload}
+        downloadLabel={saveLabel}
       />
     </div>
   );

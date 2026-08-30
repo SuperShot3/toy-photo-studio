@@ -7,8 +7,8 @@ interface SubjectSelectorProps {
 }
 
 const OPTIONS: Array<{ id: ProductKind; name: string; hint: string }> = [
-  { id: 'toy', name: 'Toys', hint: 'Figures, wood, plush' },
   { id: 'flowers', name: 'Flowers', hint: 'Blooms, bouquets, plants' },
+  { id: 'toy', name: 'Toys', hint: 'Figures, wood, plush' },
 ];
 
 export const SubjectSelector: React.FC<SubjectSelectorProps> = ({

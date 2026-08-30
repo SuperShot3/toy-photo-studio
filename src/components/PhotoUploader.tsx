@@ -14,7 +14,7 @@ export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
   imagePreviewUrl,
   onImageSelected,
   onClearImage,
-  productKind = 'toy',
+  productKind = 'flowers',
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
