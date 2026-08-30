@@ -69,7 +69,7 @@ export const SessionGallery: React.FC<SessionGalleryProps> = ({
         </button>
       </div>
 
-      <div className="flex gap-2.5 overflow-x-auto pb-1 -mx-0.5 px-0.5">
+      <div className="flex gap-2.5 overflow-x-auto touch-pan-x touch-pan-y pb-1 -mx-0.5 px-0.5">
         {isGenerating && (
           <div className="w-[92px] sm:w-[104px] shrink-0 rounded-xl overflow-hidden ring-1 ring-indigo-200 bg-indigo-50/70">
             <div className="aspect-square flex flex-col items-center justify-center gap-1.5 text-indigo-600">

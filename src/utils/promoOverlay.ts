@@ -7,6 +7,44 @@ export function isPromoStyle(style: ImageStyle): boolean {
 // encodeURI (not encodeURIComponent): Vite serves this file when `&` stays as `&`.
 export const STUDIO_LOGO_URL = `/logo/${encodeURI('Logo & Flower Delivery no bg.png')}`;
 
+export interface LightAdjustments {
+  /** Canvas brightness multiplier. 1 is unchanged. */
+  brightness: number;
+  /** Canvas contrast multiplier. 1 is unchanged. */
+  contrast: number;
+  /** Canvas saturation multiplier. 1 is unchanged. */
+  saturation: number;
+  /** Cooler (−50) to warmer (+50). 0 is unchanged. */
+  warmth: number;
+}
+
+export const DEFAULT_LIGHT_ADJUSTMENTS: LightAdjustments = {
+  brightness: 1,
+  contrast: 1,
+  saturation: 1,
+  warmth: 0,
+};
+
+export type CropAspect = 'original' | '1:1' | '4:5' | '3:1';
+export type RotateDeg = 0 | 90 | 180 | 270;
+
+export function hasLightAdjustments(light?: LightAdjustments | null): boolean {
+  if (!light) return false;
+  return (
+    (light.brightness ?? 1) !== DEFAULT_LIGHT_ADJUSTMENTS.brightness ||
+    (light.contrast ?? 1) !== DEFAULT_LIGHT_ADJUSTMENTS.contrast ||
+    (light.saturation ?? 1) !== DEFAULT_LIGHT_ADJUSTMENTS.saturation ||
+    (light.warmth ?? 0) !== DEFAULT_LIGHT_ADJUSTMENTS.warmth
+  );
+}
+
+export function hasFrameAdjustments(
+  rotateDeg?: RotateDeg | null,
+  aspect?: CropAspect | null
+): boolean {
+  return (rotateDeg ?? 0) !== 0 || (aspect ?? 'original') !== 'original';
+}
+
 export interface PromoOverlayOptions {
   imageUrl: string;
   style: ImageStyle;
@@ -14,6 +52,9 @@ export interface PromoOverlayOptions {
   tagline: string;
   sizeLabel?: string;
   includeLogo?: boolean;
+  light?: LightAdjustments;
+  rotateDeg?: RotateDeg;
+  aspect?: CropAspect;
 }
 
 function wrapText(
@@ -120,6 +161,70 @@ async function ensureOverlayFonts(): Promise<void> {
   ]);
 }
 
+function aspectRatio(aspect: CropAspect, sourceW: number, sourceH: number): number {
+  if (aspect === '1:1') return 1;
+  if (aspect === '4:5') return 4 / 5;
+  if (aspect === '3:1') return 3;
+  return sourceW / sourceH;
+}
+
+function centerCropBox(
+  sourceW: number,
+  sourceH: number,
+  aspect: CropAspect
+): { x: number; y: number; w: number; h: number } {
+  const ratio = aspectRatio(aspect, sourceW, sourceH);
+  if (sourceW / sourceH > ratio) {
+    const w = sourceH * ratio;
+    return { x: (sourceW - w) / 2, y: 0, w, h: sourceH };
+  }
+  const h = sourceW / ratio;
+  return { x: 0, y: (sourceH - h) / 2, w: sourceW, h };
+}
+
+function applyBasePhoto(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  canvasW: number,
+  canvasH: number,
+  crop: { x: number; y: number },
+  rotW: number,
+  rotH: number,
+  rotateDeg: RotateDeg,
+  light?: LightAdjustments
+) {
+  const brightness = light?.brightness ?? 1;
+  const contrast = light?.contrast ?? 1;
+  const saturation = light?.saturation ?? 1;
+  const warmth = light?.warmth ?? 0;
+  const srcW = img.naturalWidth || img.width;
+  const srcH = img.naturalHeight || img.height;
+
+  if (brightness !== 1 || contrast !== 1 || saturation !== 1) {
+    ctx.filter = `brightness(${brightness}) contrast(${contrast}) saturate(${saturation})`;
+  }
+
+  ctx.save();
+  ctx.translate(-crop.x, -crop.y);
+  ctx.translate(rotW / 2, rotH / 2);
+  if (rotateDeg) ctx.rotate((rotateDeg * Math.PI) / 180);
+  ctx.drawImage(img, -srcW / 2, -srcH / 2);
+  ctx.restore();
+  ctx.filter = 'none';
+
+  if (warmth === 0) return;
+
+  const amount = Math.min(1, Math.abs(warmth) / 50);
+  ctx.save();
+  ctx.globalCompositeOperation = 'soft-light';
+  ctx.fillStyle =
+    warmth > 0
+      ? `rgba(255, 168, 64, ${amount * 0.5})`
+      : `rgba(90, 150, 255, ${amount * 0.5})`;
+  ctx.fillRect(0, 0, canvasW, canvasH);
+  ctx.restore();
+}
+
 function drawRoundedRect(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -146,18 +251,33 @@ export async function composePromoOverlay(options: PromoOverlayOptions): Promise
   const headline = options.headline.trim();
   const tagline = options.tagline.trim();
   const printText = Boolean(headline || tagline);
-  if (!printText && !options.includeLogo) return options.imageUrl;
+  const light = options.light;
+  const rotateDeg: RotateDeg = options.rotateDeg ?? 0;
+  const aspect: CropAspect = options.aspect ?? 'original';
+  if (
+    !printText &&
+    !options.includeLogo &&
+    !hasLightAdjustments(light) &&
+    !hasFrameAdjustments(rotateDeg, aspect)
+  ) {
+    return options.imageUrl;
+  }
 
   if (printText) await ensureOverlayFonts();
   const img = await loadImage(options.imageUrl);
+  const srcW = img.naturalWidth || img.width;
+  const srcH = img.naturalHeight || img.height;
+  const rotW = rotateDeg === 90 || rotateDeg === 270 ? srcH : srcW;
+  const rotH = rotateDeg === 90 || rotateDeg === 270 ? srcW : srcH;
+  const crop = centerCropBox(rotW, rotH, aspect);
 
   const canvas = document.createElement('canvas');
-  canvas.width = img.naturalWidth || img.width;
-  canvas.height = img.naturalHeight || img.height;
+  canvas.width = Math.max(1, Math.round(crop.w));
+  canvas.height = Math.max(1, Math.round(crop.h));
   const ctx = canvas.getContext('2d');
   if (!ctx) return options.imageUrl;
 
-  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  applyBasePhoto(ctx, img, canvas.width, canvas.height, crop, rotW, rotH, rotateDeg, light);
 
   const w = canvas.width;
 

@@ -111,6 +111,8 @@ export interface GeneratedResult {
   productKind?: ProductKind;
   kindSwitchedFrom?: ProductKind;
   generatedAt: string;
+  /** Client wait from Generate click until the result is ready. */
+  durationMs?: number;
 }
 
 export interface ImproveDescriptionRequest {

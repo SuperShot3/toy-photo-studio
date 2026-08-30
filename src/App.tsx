@@ -23,6 +23,7 @@ import { findStyleRef } from './utils/styleRefs';
 import { readApiError, readNetworkError } from './utils/apiError';
 import { normalizeReferenceImage } from './utils/normalizeImage';
 import { getShotPrice } from './utils/generationPricing';
+import { formatElapsed } from './utils/formatElapsed';
 import {
   MAX_SESSION_SHOTS,
   loadSelectedShotId,
@@ -58,6 +59,7 @@ export default function App() {
   // Generation states
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [generationStep, setGenerationStep] = useState<string>('');
+  const [elapsedMs, setElapsedMs] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [kindNotice, setKindNotice] = useState<string | null>(null);
   const [result, setResult] = useState<GeneratedResult | null>(null);
@@ -65,6 +67,8 @@ export default function App() {
 
   const resultRef = useRef<HTMLDivElement>(null);
   const shotsRef = useRef<GeneratedResult[]>([]);
+  const genStartRef = useRef(0);
+  const elapsedIntervalRef = useRef<number | null>(null);
   const shotPrice = getShotPrice(apiSettings.openaiImageModel);
   const selectedStyleRef = findStyleRef(selectedStyleRefId);
 
@@ -76,6 +80,14 @@ export default function App() {
   };
 
   shotsRef.current = shots;
+
+  useEffect(() => {
+    return () => {
+      if (elapsedIntervalRef.current) {
+        window.clearInterval(elapsedIntervalRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -112,7 +124,7 @@ export default function App() {
     }
     setDescription(shot.marketingDescription);
     setSelectedStyle(shot.style);
-    setSelectedScale(shot.personScale);
+    setSelectedScale(kind === 'flowers' ? 'none' : shot.personScale);
   };
 
   const commitShots = (next: GeneratedResult[]) => {
@@ -124,6 +136,7 @@ export default function App() {
 
   const applyDetectedKind = (kind: ProductKind, switchedFrom?: ProductKind) => {
     setProductKind(kind);
+    if (kind === 'flowers') setSelectedScale('none');
     if (switchedFrom && switchedFrom !== kind) {
       setKindNotice(kindSwitchNotice(switchedFrom, kind));
     }
@@ -193,6 +206,12 @@ export default function App() {
     setIsGenerating(true);
     setError(null);
     setKindNotice(null);
+    setElapsedMs(0);
+    genStartRef.current = performance.now();
+    if (elapsedIntervalRef.current) window.clearInterval(elapsedIntervalRef.current);
+    elapsedIntervalRef.current = window.setInterval(() => {
+      setElapsedMs(performance.now() - genStartRef.current);
+    }, 200);
     setGenerationStep(
       productKind === 'flowers'
         ? 'Analyzing bloom shape, petals & arrangement...'
@@ -226,7 +245,7 @@ export default function App() {
           productDescription: description.trim(),
           productKind,
           style: selectedStyle,
-          personScale: selectedScale,
+          personScale: productKind === 'flowers' ? 'none' : selectedScale,
           ...(selectedStyleRef
             ? { styleRefId: selectedStyleRef.id, styleRefPrompt: selectedStyleRef.prompt }
             : {}),
@@ -266,12 +285,13 @@ export default function App() {
             : 'High quality toy crafted for memorable play.'),
         marketingDescription: data.marketingDescription || description,
         style: selectedStyle,
-        personScale: selectedScale,
+        personScale: usedKind === 'flowers' ? 'none' : selectedScale,
         productName: productName,
         toySizeCm: sizeCmForProduct(usedKind, data.toySizeCm ?? toySizeCm),
         productKind: usedKind,
         kindSwitchedFrom: switchedFrom,
         generatedAt: new Date().toISOString(),
+        durationMs: Math.round(performance.now() - genStartRef.current),
       };
 
       setResult(newResult);
@@ -288,6 +308,10 @@ export default function App() {
     } finally {
       clearTimeout(t1);
       clearTimeout(t2);
+      if (elapsedIntervalRef.current) {
+        window.clearInterval(elapsedIntervalRef.current);
+        elapsedIntervalRef.current = null;
+      }
       setIsGenerating(false);
       setGenerationStep('');
     }
@@ -332,6 +356,7 @@ export default function App() {
               onKindSelect={(kind) => {
                 setProductKind(kind);
                 setKindNotice(null);
+                if (kind === 'flowers') setSelectedScale('none');
               }}
             />
 
@@ -373,12 +398,13 @@ export default function App() {
               onSelectRef={(ref) => setSelectedStyleRefId(ref?.id ?? null)}
             />
 
-            {/* 4. Scale Reference Option */}
-            <ScaleSelector
-              selectedScale={selectedScale}
-              onScaleSelect={setSelectedScale}
-              toySizeCm={productKind === 'flowers' ? '' : toySizeCm}
-            />
+            {productKind === 'toy' && (
+              <ScaleSelector
+                selectedScale={selectedScale}
+                onScaleSelect={setSelectedScale}
+                toySizeCm={toySizeCm}
+              />
+            )}
 
             <ModelSelector
               selectedModel={apiSettings.openaiImageModel}
@@ -417,7 +443,7 @@ export default function App() {
                 title={`${shotPrice.perImage} · ${shotPrice.model}`}
                 className={`w-full py-3.5 px-4 rounded-xl text-sm font-bold flex items-center gap-2 transition-all duration-150 cursor-pointer ${
                   isGenerating
-                    ? 'justify-center bg-indigo-600/80 text-white cursor-not-allowed'
+                    ? 'justify-between bg-indigo-600/80 text-white cursor-not-allowed'
                     : !imagePreviewUrl
                     ? 'justify-between bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
                     : 'justify-between bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white shadow-lg shadow-indigo-100'
@@ -427,6 +453,9 @@ export default function App() {
                   <>
                     <Loader2 className="w-4 h-4 animate-spin text-white shrink-0" />
                     <span className="truncate">{generationStep || 'Rendering Studio Shot...'}</span>
+                    <span className="shrink-0 tabular-nums text-[11px] font-bold tracking-tight px-2 py-0.5 rounded-md bg-white/20 text-white">
+                      {formatElapsed(elapsedMs)}
+                    </span>
                   </>
                 ) : (
                   <>
@@ -448,9 +477,11 @@ export default function App() {
               </button>
 
               <p className="text-center text-[11px] text-slate-400 mt-2 font-medium">
-                {!imagePreviewUrl
-                  ? `Upload a ${productKind === 'flowers' ? 'flower' : 'toy'} photo to start · ${shotPrice.perImage}`
-                  : `${shotPrice.perImage} · ${shotPrice.model} · billed to your OpenAI key`}
+                {isGenerating
+                  ? `Elapsed ${formatElapsed(elapsedMs)}`
+                  : !imagePreviewUrl
+                    ? `Upload a ${productKind === 'flowers' ? 'flower' : 'toy'} photo to start · ${shotPrice.perImage}`
+                    : `${shotPrice.perImage} · ${shotPrice.model} · billed to your OpenAI key`}
               </p>
             </div>
           </section>
@@ -472,6 +503,7 @@ export default function App() {
                 onRegenerate={handleGenerateImage}
                 isRegenerating={isGenerating}
                 shotPriceLabel={shotPrice.label}
+                elapsedMs={elapsedMs}
               />
             ) : isGenerating ? (
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 sm:p-12 flex flex-col items-center justify-center text-center min-h-[460px] space-y-5">
@@ -485,8 +517,11 @@ export default function App() {
                   <p className="text-xs text-indigo-600 font-semibold animate-fade-in">
                     {generationStep || 'Simulating soft-box lighting & calibrated reflections...'}
                   </p>
-                  <p className="text-[11px] text-slate-400 pt-1">
-                    Locking 1:1 subject geometry and material textures
+                  <p className="text-2xl font-bold text-slate-900 tabular-nums pt-1">
+                    {formatElapsed(elapsedMs)}
+                  </p>
+                  <p className="text-[11px] text-slate-400">
+                    Time spent generating
                   </p>
                 </div>
                 <div className="w-48 h-1.5 bg-slate-100 rounded-full overflow-hidden">

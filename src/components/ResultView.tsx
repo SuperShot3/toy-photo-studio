@@ -1,14 +1,62 @@
 import React, { useEffect, useState } from 'react';
-import { Download, RefreshCw, Copy, Check, ArrowDownToLine, Type } from 'lucide-react';
-import { GeneratedResult, sizeCmForProduct } from '../types';
+import { Download, RefreshCw, Copy, Check, ArrowDownToLine, Type, Sun, RotateCw, Crop } from 'lucide-react';
+import { GeneratedResult, parseProductKind, sizeCmForProduct } from '../types';
 import { BeforeAfterSlider } from './BeforeAfterSlider';
-import { composePromoOverlay, isPromoStyle, STUDIO_LOGO_URL } from '../utils/promoOverlay';
+import { ImageLightbox } from './ImageLightbox';
+import { formatElapsed } from '../utils/formatElapsed';
+import {
+  composePromoOverlay,
+  isPromoStyle,
+  STUDIO_LOGO_URL,
+  type CropAspect,
+  type RotateDeg,
+} from '../utils/promoOverlay';
+
+const BRIGHTNESS_DEFAULT = 100;
+const CONTRAST_DEFAULT = 100;
+const SATURATION_DEFAULT = 100;
+const WARMTH_DEFAULT = 0;
+const ASPECT_OPTIONS: CropAspect[] = ['original', '1:1', '4:5', '3:1'];
 
 interface ResultViewProps {
   result: GeneratedResult;
   onRegenerate: () => void;
   isRegenerating: boolean;
   shotPriceLabel: string;
+  elapsedMs?: number;
+}
+
+function LightSlider({
+  label,
+  value,
+  min,
+  max,
+  display,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  display: string;
+  onChange: (next: number) => void;
+}) {
+  return (
+    <label className="block space-y-1">
+      <span className="flex items-center justify-between gap-2">
+        <span className="text-[10px] font-bold text-slate-500 uppercase">{label}</span>
+        <span className="text-[10px] font-semibold text-slate-600 tabular-nums">{display}</span>
+      </span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="w-full h-1.5 accent-indigo-600 cursor-pointer"
+      />
+    </label>
+  );
 }
 
 export const ResultView: React.FC<ResultViewProps> = ({
@@ -16,28 +64,59 @@ export const ResultView: React.FC<ResultViewProps> = ({
   onRegenerate,
   isRegenerating,
   shotPriceLabel,
+  elapsedMs = 0,
 }) => {
   const [copied, setCopied] = useState(false);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   const promo = isPromoStyle(result.style);
   const sizeCm = sizeCmForProduct(result.productKind, result.toySizeCm);
+  const floral = parseProductKind(result.productKind) === 'flowers';
   const [overlayOn, setOverlayOn] = useState(promo);
   const [logoOn, setLogoOn] = useState(false);
   const [headline, setHeadline] = useState(result.productName || result.productTitle);
   const [tagline, setTagline] = useState(result.sellingLine);
+  const [brightness, setBrightness] = useState(BRIGHTNESS_DEFAULT);
+  const [contrast, setContrast] = useState(CONTRAST_DEFAULT);
+  const [saturation, setSaturation] = useState(SATURATION_DEFAULT);
+  const [warmth, setWarmth] = useState(WARMTH_DEFAULT);
+  const [aspect, setAspect] = useState<CropAspect>('original');
+  const [rotateDeg, setRotateDeg] = useState<RotateDeg>(0);
   const [displayImage, setDisplayImage] = useState(result.imageUrl);
   const [isComposing, setIsComposing] = useState(false);
   const printName = promo && overlayOn;
+  const lightChanged =
+    brightness !== BRIGHTNESS_DEFAULT ||
+    contrast !== CONTRAST_DEFAULT ||
+    saturation !== SATURATION_DEFAULT ||
+    warmth !== WARMTH_DEFAULT;
+  const frameChanged = aspect !== 'original' || rotateDeg !== 0;
+  const editsChanged = lightChanged || frameChanged;
+
+  const resetEdits = () => {
+    setBrightness(BRIGHTNESS_DEFAULT);
+    setContrast(CONTRAST_DEFAULT);
+    setSaturation(SATURATION_DEFAULT);
+    setWarmth(WARMTH_DEFAULT);
+    setAspect('original');
+    setRotateDeg(0);
+  };
 
   useEffect(() => {
     setOverlayOn(isPromoStyle(result.style));
     setLogoOn(false);
     setHeadline(result.productName || result.productTitle);
     setTagline(result.sellingLine);
+    setBrightness(BRIGHTNESS_DEFAULT);
+    setContrast(CONTRAST_DEFAULT);
+    setSaturation(SATURATION_DEFAULT);
+    setWarmth(WARMTH_DEFAULT);
+    setAspect('original');
+    setRotateDeg(0);
     setDisplayImage(result.imageUrl);
   }, [result.imageUrl, result.style, result.productName, result.productTitle, result.sellingLine]);
 
   useEffect(() => {
-    if (!printName && !logoOn) {
+    if (!printName && !logoOn && !editsChanged) {
       setDisplayImage(result.imageUrl);
       setIsComposing(false);
       return;
@@ -53,6 +132,14 @@ export const ResultView: React.FC<ResultViewProps> = ({
         tagline: printName ? tagline.trim() : '',
         sizeLabel: printName && sizeCm ? `${sizeCm} cm` : '',
         includeLogo: logoOn,
+        rotateDeg,
+        aspect,
+        light: {
+          brightness: brightness / 100,
+          contrast: contrast / 100,
+          saturation: saturation / 100,
+          warmth,
+        },
       })
         .then((url) => {
           if (!cancelled) setDisplayImage(url);
@@ -75,6 +162,13 @@ export const ResultView: React.FC<ResultViewProps> = ({
     overlayOn,
     headline,
     tagline,
+    brightness,
+    contrast,
+    saturation,
+    warmth,
+    aspect,
+    rotateDeg,
+    editsChanged,
     result.imageUrl,
     result.style,
     result.productName,
@@ -106,7 +200,17 @@ export const ResultView: React.FC<ResultViewProps> = ({
     const specLines = [
       ...(sizeCm ? [`- Dimensions: ~${sizeCm} cm`] : []),
       `- Photography Style: ${result.style.replace('-', ' ').toUpperCase()}`,
-      `- Visual Reference: ${result.personScale === 'none' ? 'Solo Product' : result.personScale === 'child' ? 'With Child Scale Reference' : 'With Adult Scale Reference'}`,
+      ...(floral
+        ? []
+        : [
+            `- Visual Reference: ${
+              result.personScale === 'none'
+                ? 'Solo Product'
+                : result.personScale === 'child'
+                  ? 'With Child Scale Reference'
+                  : 'With Adult Scale Reference'
+            }`,
+          ]),
     ];
     const listingText = `📦 PRODUCT TITLE:\n${result.productTitle}\n\n✨ SELLING HOOK:\n${result.sellingLine}\n\n📝 PRODUCT DESCRIPTION:\n${result.marketingDescription}\n\n📏 SPECIFICATIONS:\n${specLines.join('\n')}`;
 
@@ -119,17 +223,39 @@ export const ResultView: React.FC<ResultViewProps> = ({
     }
   };
 
+  const timingLabel = isRegenerating
+    ? `Generating · ${formatElapsed(elapsedMs)}`
+    : result.durationMs
+      ? `Generated in ${formatElapsed(result.durationMs)}`
+      : null;
+
+  const composingLabel =
+    printName && logoOn
+      ? 'Printing name and logo'
+      : logoOn
+        ? 'Adding logo'
+        : printName
+          ? 'Printing name on photo'
+          : frameChanged
+            ? 'Framing photo'
+            : 'Adjusting light';
+
   return (
     <div className="space-y-6 bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-sm">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500 text-white uppercase tracking-wider">
               AI Enhanced
             </span>
             <span className="text-[11px] text-slate-400 capitalize font-medium">
               {result.style.replace('-', ' ')}
             </span>
+            {timingLabel && (
+              <span className="text-[11px] text-slate-400 font-medium tabular-nums">
+                {timingLabel}
+              </span>
+            )}
           </div>
           <h3 className="text-base sm:text-lg font-bold text-slate-900 mt-1">
             Studio Output
@@ -167,14 +293,11 @@ export const ResultView: React.FC<ResultViewProps> = ({
           originalImage={result.originalImageUrl}
           generatedImage={displayImage}
           productName={result.productName}
+          onViewGenerated={() => setLightboxOpen(true)}
         />
         {isComposing && (
           <p className="absolute bottom-10 left-1/2 -translate-x-1/2 z-30 pointer-events-none px-2.5 py-0.5 rounded-full bg-slate-900/70 text-white text-[10px] font-medium">
-            {printName && logoOn
-              ? 'Printing name and logo'
-              : logoOn
-                ? 'Adding logo'
-                : 'Printing name on photo'}
+            {composingLabel}
           </p>
         )}
       </div>
@@ -267,6 +390,109 @@ export const ResultView: React.FC<ResultViewProps> = ({
             className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer shrink-0"
           />
         </label>
+
+        <div className="pt-3 border-t border-slate-200 space-y-2.5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <Sun className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold text-slate-800">Light</p>
+                <p className="text-[10px] text-slate-500 truncate">
+                  Brightness, contrast, color, and warmth — baked into the download
+                </p>
+              </div>
+            </div>
+            {editsChanged && (
+              <button
+                type="button"
+                onClick={resetEdits}
+                className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700 cursor-pointer shrink-0"
+              >
+                Reset
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <LightSlider
+              label="Brightness"
+              value={brightness}
+              min={70}
+              max={140}
+              display={`${brightness}%`}
+              onChange={setBrightness}
+            />
+            <LightSlider
+              label="Contrast"
+              value={contrast}
+              min={80}
+              max={130}
+              display={`${contrast}%`}
+              onChange={setContrast}
+            />
+            <LightSlider
+              label="Saturation"
+              value={saturation}
+              min={50}
+              max={150}
+              display={`${saturation}%`}
+              onChange={setSaturation}
+            />
+            <LightSlider
+              label="Warmth"
+              value={warmth}
+              min={-50}
+              max={50}
+              display={warmth === 0 ? 'Neutral' : warmth > 0 ? `+${warmth}` : `${warmth}`}
+              onChange={setWarmth}
+            />
+          </div>
+        </div>
+
+        <div className="pt-3 border-t border-slate-200 space-y-2.5">
+          <div className="flex items-center gap-2 min-w-0">
+            <Crop className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+            <div className="min-w-0">
+              <p className="text-[11px] font-bold text-slate-800">Frame</p>
+              <p className="text-[10px] text-slate-500 truncate">
+                Center crop for catalog, Instagram, or a banner
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            {ASPECT_OPTIONS.map((option) => {
+              const selected = aspect === option;
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setAspect(option)}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold cursor-pointer transition-colors ${
+                    selected
+                      ? 'bg-indigo-600 text-white'
+                      : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  {option === 'original' ? 'Original' : option}
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              onClick={() =>
+                setRotateDeg((current) => ((current + 90) % 360) as RotateDeg)
+              }
+              className="ml-auto px-2.5 py-1 rounded-lg text-[11px] font-semibold cursor-pointer bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center gap-1"
+            >
+              <RotateCw className="w-3 h-3" />
+              Rotate
+              {rotateDeg !== 0 && (
+                <span className="tabular-nums text-slate-400">{rotateDeg}°</span>
+              )}
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-2 border-t border-slate-100">
@@ -352,6 +578,14 @@ export const ResultView: React.FC<ResultViewProps> = ({
           </div>
         </div>
       </div>
+
+      <ImageLightbox
+        open={lightboxOpen}
+        imageUrl={displayImage}
+        alt={`${result.productName || 'Product'} studio result`}
+        onClose={() => setLightboxOpen(false)}
+        onDownload={handleDownload}
+      />
     </div>
   );
 };
