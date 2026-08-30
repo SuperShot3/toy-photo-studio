@@ -1,7 +1,8 @@
 import React from 'react';
-import { ShoppingBag, Sparkles, Crown, Check } from 'lucide-react';
+import { Sparkles, Crown } from 'lucide-react';
 import { STYLE_OPTIONS } from '../data/sampleToys';
 import { ImageStyle } from '../types';
+import { isPromoStyle } from '../utils/promoOverlay';
 
 interface StyleSelectorProps {
   selectedStyle: ImageStyle;
@@ -24,7 +25,7 @@ export const StyleSelector: React.FC<StyleSelectorProps> = ({
       <div className="grid grid-cols-3 gap-2">
         {STYLE_OPTIONS.map((style) => {
           const isSelected = selectedStyle === style.id;
-          
+
           return (
             <button
               key={style.id}
@@ -36,9 +37,8 @@ export const StyleSelector: React.FC<StyleSelectorProps> = ({
                   : 'border-slate-200 bg-white hover:border-indigo-400 hover:bg-slate-50/60'
               }`}
             >
-              {/* Visual preview icon box */}
               <div
-                className={`w-full aspect-square max-h-16 rounded-lg mb-1.5 flex items-center justify-center transition-colors ${
+                className={`relative w-full aspect-square max-h-16 rounded-lg mb-1.5 flex items-center justify-center overflow-hidden transition-colors ${
                   style.id === 'clean-catalog'
                     ? isSelected
                       ? 'bg-indigo-100/90 text-indigo-700'
@@ -57,8 +57,20 @@ export const StyleSelector: React.FC<StyleSelectorProps> = ({
                     1:1
                   </div>
                 )}
-                {style.id === 'styled-promo' && <Sparkles className="w-5 h-5" />}
-                {style.id === 'luxury-promo' && <Crown className="w-5 h-5" />}
+                {style.id === 'styled-promo' && <Sparkles className="w-5 h-5 mb-2" />}
+                {style.id === 'luxury-promo' && <Crown className="w-5 h-5 mb-2" />}
+
+                {style.id !== 'clean-catalog' && (
+                  <span
+                    className={`absolute inset-x-0 bottom-0 py-[3px] text-[7px] font-bold tracking-wider uppercase ${
+                      style.id === 'luxury-promo'
+                        ? 'bg-black/55 text-amber-200 font-serif italic'
+                        : 'bg-black/35 text-white font-display'
+                    }`}
+                  >
+                    Name
+                  </span>
+                )}
               </div>
 
               <span
@@ -79,7 +91,17 @@ export const StyleSelector: React.FC<StyleSelectorProps> = ({
           );
         })}
       </div>
+
+      {isPromoStyle(selectedStyle) ? (
+        <p className="text-[10px] text-slate-500 leading-relaxed px-0.5">
+          Promo prints the <span className="font-semibold text-slate-700">product name</span> and a
+          short selling line on the photo so it is ready to post or sell.
+        </p>
+      ) : (
+        <p className="text-[10px] text-slate-500 leading-relaxed px-0.5">
+          Catalog stays text-free for Amazon and Shopify. Switch to Promo to add a name on the image.
+        </p>
+      )}
     </div>
   );
 };
-

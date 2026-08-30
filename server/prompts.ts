@@ -30,25 +30,29 @@ STYLE 1 — CLEAN CATALOG:
   } else if (style === "styled-promo") {
     styleInstructions = `
 STYLE 2 — STYLED PROMO:
-- Create an attractive, warm commercial lifestyle image suitable for selling toys online.
+- Create an attractive, warm commercial lifestyle image suitable for selling toys online — composed like a social ad or shop banner that will receive a product-name headline later.
 - The EXACT toy from the uploaded reference photo is the dominant, crisp foreground hero subject.
 - Contextual background: A tasteful, warm children's setting with soft shallow depth-of-field blur (such as a sunlit Scandinavian nursery, smooth blonde wooden play table, or cozy pastel playroom shelf).
 - Warm, natural golden daylight with gentle rim glow and rich ambient atmosphere.
 - Keep the toy 100% true to original reference in material, colors, and features.
 - Realistic surface reflections and natural cast shadows.
+- COMPOSITION FOR TYPE: Place the toy in the upper two-thirds of the frame. Leave a clean, uncluttered lower band (about the bottom 22%) with soft falloff and no busy props, so a product name and selling line can sit on the photo.
+- Do NOT render any text, letters, logos, captions, watermarks, or labels in the photograph.
 `;
-    backgroundGuidance = "tasteful soft-focus warm nursery / wooden playroom lifestyle setting";
+    backgroundGuidance = "tasteful soft-focus warm nursery / wooden playroom lifestyle setting with open lower third for headline type";
   } else {
     styleInstructions = `
 STYLE 3 — LUXURY PROMO:
-- Create a premium high-end luxury advertising campaign photo.
+- Create a premium high-end luxury advertising campaign photo — composed like a magazine ad that will receive elegant product-name typography later.
 - The EXACT toy from the reference photo is displayed as a prestigious hero piece.
 - Composition: Positioned elegantly atop a minimalist architectural podium, travertine stone plinth, or softly draped luxury textured fabric.
 - Premium studio spotlighting with dramatic yet soft directional falloff, subtle warm rim lighting accentuating the toy's textures.
 - Clean luxury aesthetic, gift-like prestige presentation with rich, deep, refined tonality.
 - Flawless commercial lighting and soft elegant shadows.
+- COMPOSITION FOR TYPE: Keep the toy in the upper two-thirds. Leave a calm, dark-to-soft lower band (about the bottom 24%) free of objects so a product name can be printed on the image.
+- Do NOT render any text, letters, logos, captions, watermarks, or labels in the photograph.
 `;
-    backgroundGuidance = "architectural stone plinth, luxury draped neutral fabric, elegant high-end studio lighting";
+    backgroundGuidance = "architectural stone plinth, luxury draped fabric, elegant high-end studio lighting with open lower third for headline type";
   }
 
   let personScaleInstructions = "";

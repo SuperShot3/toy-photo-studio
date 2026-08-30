@@ -26,6 +26,7 @@ export interface GeneratePhotoRequest {
 }
 
 export interface GeneratedResult {
+  id: string;
   imageUrl: string;
   originalImageUrl: string;
   productTitle: string;

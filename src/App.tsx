@@ -10,12 +10,21 @@ import { ProductDetailsForm } from './components/ProductDetailsForm';
 import { StyleSelector } from './components/StyleSelector';
 import { ScaleSelector } from './components/ScaleSelector';
 import { ResultView } from './components/ResultView';
+import { SessionGallery } from './components/SessionGallery';
 import { ApiSettingsPanel } from './components/ApiSettingsPanel';
 import { ImageStyle, PersonScale, GeneratedResult, ImprovedDescriptionResponse, ApiSettings } from './types';
-import { Sparkles, ArrowRight, Loader2, AlertCircle, ShieldCheck, CheckCircle, Zap } from 'lucide-react';
+import { Sparkles, Loader2, AlertCircle, ShieldCheck, CheckCircle, Zap } from 'lucide-react';
 import { loadApiSettings, saveApiSettings, getActiveApiKey, isApiKeyConfigured } from './utils/apiSettings';
 import { readApiError, readNetworkError } from './utils/apiError';
 import { getShotPrice } from './utils/generationPricing';
+import {
+  MAX_SESSION_SHOTS,
+  loadSelectedShotId,
+  loadSessionShots,
+  mimeFromDataUrl,
+  persistSessionShots,
+  saveSelectedShotId,
+} from './utils/sessionGallery';
 
 export default function App() {
   const [apiSettings, setApiSettings] = useState<ApiSettings>(() => loadApiSettings());
@@ -40,9 +49,54 @@ export default function App() {
   const [generationStep, setGenerationStep] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<GeneratedResult | null>(null);
+  const [shots, setShots] = useState<GeneratedResult[]>([]);
 
   const resultRef = useRef<HTMLDivElement>(null);
+  const shotsRef = useRef<GeneratedResult[]>([]);
   const shotPrice = getShotPrice(apiSettings.provider);
+
+  shotsRef.current = shots;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const restoreSession = async () => {
+      const loaded = await loadSessionShots();
+      if (cancelled) return;
+
+      setShots(loaded);
+      const selectedId = loadSelectedShotId();
+      const selected =
+        loaded.find((shot) => shot.id === selectedId) ?? loaded[0] ?? null;
+
+      if (selected) {
+        applyShotToForm(selected);
+        setResult(selected);
+      }
+    };
+
+    void restoreSession();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const applyShotToForm = (shot: GeneratedResult) => {
+    setImagePreviewUrl(shot.originalImageUrl);
+    setMimeType(mimeFromDataUrl(shot.originalImageUrl));
+    setProductName(shot.productName);
+    setToySizeCm(String(shot.toySizeCm));
+    setDescription(shot.marketingDescription);
+    setSelectedStyle(shot.style);
+    setSelectedScale(shot.personScale);
+  };
+
+  const commitShots = (next: GeneratedResult[]) => {
+    const trimmed = next.slice(0, MAX_SESSION_SHOTS);
+    setShots(trimmed);
+    void persistSessionShots(trimmed);
+    return trimmed;
+  };
 
   // Handle image selection
   const handleImageSelected = (base64Url: string, fileMimeType: string) => {
@@ -53,7 +107,31 @@ export default function App() {
 
   const handleClearImage = () => {
     setImagePreviewUrl(null);
+  };
+
+  const handleSelectShot = (shot: GeneratedResult) => {
+    setResult(shot);
+    saveSelectedShotId(shot.id);
+    applyShotToForm(shot);
+    setError(null);
+  };
+
+  const handleRemoveShot = (shotId: string) => {
+    const remaining = commitShots(shots.filter((shot) => shot.id !== shotId));
+    if (result?.id !== shotId) return;
+
+    const nextSelected = remaining[0] ?? null;
+    setResult(nextSelected);
+    saveSelectedShotId(nextSelected?.id ?? null);
+    if (nextSelected) {
+      applyShotToForm(nextSelected);
+    }
+  };
+
+  const handleClearAllShots = () => {
+    commitShots([]);
     setResult(null);
+    saveSelectedShotId(null);
   };
 
   const handleApplyImprovedCopy = (improved: ImprovedDescriptionResponse) => {
@@ -117,6 +195,7 @@ export default function App() {
       const data = await response.json();
 
       const newResult: GeneratedResult = {
+        id: crypto.randomUUID(),
         imageUrl: data.imageUrl,
         originalImageUrl: imagePreviewUrl,
         productTitle: data.productTitle || productName,
@@ -130,6 +209,8 @@ export default function App() {
       };
 
       setResult(newResult);
+      saveSelectedShotId(newResult.id);
+      commitShots([newResult, ...shotsRef.current.filter((shot) => shot.id !== newResult.id)]);
 
       // Smooth scroll to result
       setTimeout(() => {
@@ -266,7 +347,16 @@ export default function App() {
           </section>
 
           {/* Right Column: Output / Live Result Area */}
-          <section className="flex-1 w-full min-w-0" ref={resultRef}>
+          <section className="flex-1 w-full min-w-0 space-y-4" ref={resultRef}>
+            <SessionGallery
+              shots={shots}
+              selectedId={result?.id ?? null}
+              isGenerating={isGenerating}
+              onSelect={handleSelectShot}
+              onRemove={handleRemoveShot}
+              onClearAll={handleClearAllShots}
+            />
+
             {result ? (
               <ResultView
                 result={result}
@@ -306,6 +396,11 @@ export default function App() {
                   <p className="text-xs text-slate-500 leading-relaxed">
                     Upload a toy snapshot on the left, pick your photography style, and click <span className="font-semibold text-indigo-600">Generate Professional Shot</span> to get clean catalog and promo images.
                   </p>
+                  {(selectedStyle === 'styled-promo' || selectedStyle === 'luxury-promo') && (
+                    <p className="text-[11px] text-slate-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 leading-relaxed">
+                      Promo prints the product name and a short selling line on the photo, so the shot is ready to post or sell. Catalog stays text-free.
+                    </p>
+                  )}
                 </div>
 
                 {imagePreviewUrl && (
