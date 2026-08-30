@@ -7,7 +7,7 @@ import {
   ImprovedCopyResult,
   parseJsonFromText,
   StudioPromptParams,
-} from "./prompts";
+} from "./prompts.js";
 import {
   parseOpenAiImageModel,
   parseProductKind,
@@ -15,7 +15,7 @@ import {
   type OpenAiImageModel,
   type PersonScale,
   type ProductKind,
-} from "../src/types";
+} from "../src/types.js";
 
 export interface AiConfig {
   apiKey: string;

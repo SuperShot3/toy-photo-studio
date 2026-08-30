@@ -1,4 +1,4 @@
-import type { ImageStyle, PersonScale, ProductKind } from "../src/types";
+import type { ImageStyle, PersonScale, ProductKind } from "../src/types.js";
 
 export interface StudioPromptParams {
   productName: string;

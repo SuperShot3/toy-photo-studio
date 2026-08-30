@@ -2,7 +2,7 @@ import express, { NextFunction, Request, Response } from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
-import { runGeneratePhoto, runHealth, runImproveDescription } from "./server/apiHandlers";
+import { runGeneratePhoto, runHealth, runImproveDescription } from "./server/apiHandlers.js";
 
 dotenv.config();
 

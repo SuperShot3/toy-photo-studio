@@ -16,7 +16,7 @@ import { SessionGallery } from './components/SessionGallery';
 import { ApiSettingsPanel } from './components/ApiSettingsPanel';
 import { ImageStyle, PersonScale, ProductKind, GeneratedResult, ImprovedDescriptionResponse, ApiSettings, OpenAiImageModel, parseProductKind, sizeCmForProduct } from './types';
 import { isPromoStyle } from './utils/promoOverlay';
-import { Sparkles, Loader2, AlertCircle, ShieldCheck, CheckCircle, Zap } from 'lucide-react';
+import { Sparkles, Loader2, AlertCircle } from 'lucide-react';
 import { loadApiSettings, saveApiSettings, getActiveApiKey, isApiKeyConfigured } from './utils/apiSettings';
 import { readApiError, readNetworkError } from './utils/apiError';
 import { normalizeReferenceImage } from './utils/normalizeImage';
@@ -453,26 +453,10 @@ export default function App() {
             )}
           </section>
         </div>
-
-        {/* Feature Guarantees Footer Bar */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-6 border-t border-slate-200/80 text-xs text-slate-500 mt-6">
-          <div className="flex items-center gap-2 p-3 bg-white rounded-xl border border-slate-200 shadow-2xs">
-            <ShieldCheck className="w-4 h-4 text-indigo-600 shrink-0" />
-            <span className="font-medium text-slate-700">100% Subject Geometry Preserved</span>
-          </div>
-          <div className="flex items-center gap-2 p-3 bg-white rounded-xl border border-slate-200 shadow-2xs">
-            <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span className="font-medium text-slate-700">Amazon & Shopify E-Commerce Ready</span>
-          </div>
-          <div className="flex items-center gap-2 p-3 bg-white rounded-xl border border-slate-200 shadow-2xs">
-            <Zap className="w-4 h-4 text-slate-700 shrink-0" />
-            <span className="font-medium text-slate-700">Instant SEO Title & Copywriter</span>
-          </div>
-        </div>
       </main>
 
       <footer className="mt-auto border-t border-slate-200 py-4 text-center text-xs text-slate-400 bg-white">
-        <p>PhotoStudioAI • Toys and flowers</p>
+        <p>PhotoStudioAI</p>
       </footer>
     </div>
   );

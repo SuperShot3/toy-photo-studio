@@ -1,4 +1,4 @@
-import { handleJsonPost } from "./_http";
+import { handleJsonPost } from "./_http.js";
 
 export const maxDuration = 60;
 
@@ -9,7 +9,7 @@ export default {
     }
 
     try {
-      const { runImproveDescription } = await import("../server/apiHandlers");
+      const { runImproveDescription } = await import("../server/apiHandlers.js");
       return await handleJsonPost(request, runImproveDescription);
     } catch (error: unknown) {
       console.error("improve-description failed:", error);

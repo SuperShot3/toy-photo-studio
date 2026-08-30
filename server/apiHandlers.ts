@@ -1,5 +1,5 @@
-import { improveDescription, generatePhoto, HttpError } from "./ai";
-import { parseOpenAiImageModel, parseProductKind, sizeCmForProduct } from "../src/types";
+import { improveDescription, generatePhoto, HttpError } from "./ai.js";
+import { parseOpenAiImageModel, parseProductKind, sizeCmForProduct } from "../src/types.js";
 
 export type JsonBody = Record<string, unknown>;
 

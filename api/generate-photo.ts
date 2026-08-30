@@ -1,4 +1,4 @@
-import { handleJsonPost } from "./_http";
+import { handleJsonPost } from "./_http.js";
 
 export const maxDuration = 60;
 
@@ -9,7 +9,7 @@ export default {
     }
 
     try {
-      const { runGeneratePhoto } = await import("../server/apiHandlers");
+      const { runGeneratePhoto } = await import("../server/apiHandlers.js");
       return await handleJsonPost(request, runGeneratePhoto);
     } catch (error: unknown) {
       console.error("generate-photo failed:", error);
