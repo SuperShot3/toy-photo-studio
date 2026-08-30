@@ -6,16 +6,11 @@
   "functions": {
     "api/generate-photo.ts": {
       "maxDuration": 60,
-      "memory": 1024,
-      "includeFiles": "{server/**,src/types.ts}"
+      "memory": 1024
     },
     "api/improve-description.ts": {
       "maxDuration": 60,
-      "memory": 1024,
-      "includeFiles": "{server/**,src/types.ts}"
-    },
-    "api/health.ts": {
-      "includeFiles": "{server/**,src/types.ts}"
+      "memory": 1024
     }
   }
 }

@@ -1,28 +1,20 @@
-import { handleJsonPost, handleVercelInvoke } from "./_http";
+import { handleJsonPost } from "./_http";
 
-export const config = {
-  maxDuration: 60,
-  api: {
-    bodyParser: {
-      sizeLimit: "10mb",
-    },
+export const maxDuration = 60;
+
+export default {
+  async fetch(request: Request) {
+    if (request.method !== "POST") {
+      return Response.json({ error: "Method not allowed." }, { status: 405 });
+    }
+
+    try {
+      const { runImproveDescription } = await import("../server/apiHandlers");
+      return await handleJsonPost(request, runImproveDescription);
+    } catch (error: unknown) {
+      console.error("improve-description failed:", error);
+      const message = error instanceof Error ? error.message : "Server error.";
+      return Response.json({ error: message }, { status: 500 });
+    }
   },
 };
-
-async function run(body: Record<string, unknown>) {
-  const { runImproveDescription } = await import("../server/apiHandlers");
-  return runImproveDescription(body);
-}
-
-export async function POST(request: Request): Promise<Response> {
-  return handleJsonPost(request, run);
-}
-
-export default async function handler(req: unknown, res?: unknown) {
-  return handleVercelInvoke(
-    req as Request,
-    res as Parameters<typeof handleVercelInvoke>[1],
-    "POST",
-    run
-  );
-}
