@@ -57,6 +57,9 @@ export async function readApiError(response: Response, fallback: string): Promis
   }
 
   if (trimmed && trimmed.length < 400 && !/<\/?html/i.test(trimmed) && !trimmed.startsWith('<')) {
+    if (/FUNCTION_INVOCATION_FAILED/i.test(trimmed)) {
+      return 'The photo API crashed on this deployment. Push the latest API fix, wait for Vercel to finish deploying, then try again.';
+    }
     return trimmed;
   }
 
