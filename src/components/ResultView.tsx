@@ -22,9 +22,8 @@ const ASPECT_OPTIONS: CropAspect[] = ['original', '1:1', '4:5', '3:1'];
 interface ResultViewProps {
   result: GeneratedResult;
   onRegenerate: () => void;
-  isRegenerating: boolean;
+  regenerateDisabled?: boolean;
   shotPriceLabel: string;
-  elapsedMs?: number;
 }
 
 function LightSlider({
@@ -63,9 +62,8 @@ function LightSlider({
 export const ResultView: React.FC<ResultViewProps> = ({
   result,
   onRegenerate,
-  isRegenerating,
+  regenerateDisabled = false,
   shotPriceLabel,
-  elapsedMs = 0,
 }) => {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const promo = isPromoStyle(result.style);
@@ -198,11 +196,9 @@ export const ResultView: React.FC<ResultViewProps> = ({
     void saveImage(displayImage, `${sanitizedTitle}-${suffix}.${ext}`).catch(() => {});
   };
 
-  const timingLabel = isRegenerating
-    ? `Generating · ${formatElapsed(elapsedMs)}`
-    : result.durationMs
-      ? `Generated in ${formatElapsed(result.durationMs)}`
-      : null;
+  const timingLabel = result.durationMs
+    ? `Generated in ${formatElapsed(result.durationMs)}`
+    : null;
 
   const composingLabel =
     printName && logoOn
@@ -241,11 +237,15 @@ export const ResultView: React.FC<ResultViewProps> = ({
           <button
             type="button"
             onClick={onRegenerate}
-            disabled={isRegenerating}
-            title={`${shotPriceLabel} per image`}
+            disabled={regenerateDisabled}
+            title={
+              regenerateDisabled
+                ? 'Wait for a shot to finish before starting another'
+                : `${shotPriceLabel} per image`
+            }
             className="px-3 py-1.5 rounded-lg border border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 shadow-xs"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${isRegenerating ? 'animate-spin text-indigo-600' : ''}`} />
+            <RefreshCw className="w-3.5 h-3.5" />
             Regenerate
             <span className="tabular-nums text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
               {shotPriceLabel}

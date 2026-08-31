@@ -15,7 +15,7 @@ import { ResultView } from './components/ResultView';
 import { SessionGallery } from './components/SessionGallery';
 import { SettingsSheet } from './components/SettingsSheet';
 import { StyleRefManager } from './components/StyleRefManager';
-import { ImageStyle, PersonScale, ProductKind, GeneratedResult, ImprovedDescriptionResponse, ApiSettings, OpenAiImageModel, parseProductKind, sizeCmForProduct, kindSwitchNotice, isPromoImageStyle } from './types';
+import { ImageStyle, PersonScale, ProductKind, GeneratedResult, GenerationJob, ImprovedDescriptionResponse, ApiSettings, OpenAiImageModel, parseProductKind, sizeCmForProduct, kindSwitchNotice, isPromoImageStyle, MAX_CONCURRENT_GENERATIONS } from './types';
 import { isPromoStyle } from './utils/promoOverlay';
 import { Sparkles, Loader2, AlertCircle, Info } from 'lucide-react';
 import { loadApiSettings, saveApiSettings, getActiveApiKey, isApiKeyConfigured } from './utils/apiSettings';
@@ -57,9 +57,8 @@ export default function App() {
   const [styleRefManagerOpen, setStyleRefManagerOpen] = useState(false);
 
   // Generation states
-  const [isGenerating, setIsGenerating] = useState<boolean>(false);
-  const [generationStep, setGenerationStep] = useState<string>('');
-  const [elapsedMs, setElapsedMs] = useState(0);
+  const [jobs, setJobs] = useState<GenerationJob[]>([]);
+  const [nowMs, setNowMs] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [kindNotice, setKindNotice] = useState<string | null>(null);
   const [result, setResult] = useState<GeneratedResult | null>(null);
@@ -67,10 +66,21 @@ export default function App() {
 
   const resultRef = useRef<HTMLDivElement>(null);
   const shotsRef = useRef<GeneratedResult[]>([]);
-  const genStartRef = useRef(0);
-  const elapsedIntervalRef = useRef<number | null>(null);
+  const jobsRef = useRef<GenerationJob[]>([]);
+  const productKindRef = useRef<ProductKind>(productKind);
+  const errorJobIdRef = useRef<string | null>(null);
   const shotPrice = getShotPrice(apiSettings.openaiImageModel);
   const selectedStyleRef = findStyleRef(selectedStyleRefId);
+  const runningCount = jobs.length;
+  const atGenerationCap = runningCount >= MAX_CONCURRENT_GENERATIONS;
+  const oldestStartedAt = jobs.reduce(
+    (min, job) => Math.min(min, job.startedAt),
+    Number.POSITIVE_INFINITY
+  );
+  const oldestElapsedMs =
+    jobs.length > 0 && Number.isFinite(oldestStartedAt)
+      ? Math.max(0, nowMs - oldestStartedAt)
+      : 0;
 
   const handleStyleSelect = (style: ImageStyle) => {
     setSelectedStyle(style);
@@ -79,15 +89,20 @@ export default function App() {
     }
   };
 
-  shotsRef.current = shots;
+  productKindRef.current = productKind;
 
   useEffect(() => {
+    if (jobs.length === 0) return;
+
+    setNowMs(performance.now());
+    const intervalId = window.setInterval(() => {
+      setNowMs(performance.now());
+    }, 200);
+
     return () => {
-      if (elapsedIntervalRef.current) {
-        window.clearInterval(elapsedIntervalRef.current);
-      }
+      window.clearInterval(intervalId);
     };
-  }, []);
+  }, [jobs.length]);
 
   useEffect(() => {
     let cancelled = false;
@@ -96,6 +111,7 @@ export default function App() {
       const loaded = await loadSessionShots();
       if (cancelled) return;
 
+      shotsRef.current = loaded;
       setShots(loaded);
       const selectedId = loadSelectedShotId();
       const selected =
@@ -129,6 +145,7 @@ export default function App() {
 
   const commitShots = (next: GeneratedResult[]) => {
     const trimmed = next.slice(0, MAX_SESSION_SHOTS);
+    shotsRef.current = trimmed;
     setShots(trimmed);
     void persistSessionShots(trimmed);
     return trimmed;
@@ -162,7 +179,7 @@ export default function App() {
   };
 
   const handleRemoveShot = (shotId: string) => {
-    const remaining = commitShots(shots.filter((shot) => shot.id !== shotId));
+    const remaining = commitShots(shotsRef.current.filter((shot) => shot.id !== shotId));
     if (result?.id !== shotId) return;
 
     const nextSelected = remaining[0] ?? null;
@@ -184,7 +201,12 @@ export default function App() {
     if (improved.productDescription) setDescription(improved.productDescription);
   };
 
-  // Main Generate Image Action
+  const dropJob = (jobId: string) => {
+    jobsRef.current = jobsRef.current.filter((job) => job.id !== jobId);
+    setJobs(jobsRef.current);
+  };
+
+  // Main Generate Image Action — snapshots form state so overlapping jobs stay independent.
   const handleGenerateImage = async () => {
     if (!imagePreviewUrl) {
       setError(productKind === 'flowers'
@@ -203,54 +225,59 @@ export default function App() {
       return;
     }
 
-    setIsGenerating(true);
-    setError(null);
-    setKindNotice(null);
-    setElapsedMs(0);
-    genStartRef.current = performance.now();
-    if (elapsedIntervalRef.current) window.clearInterval(elapsedIntervalRef.current);
-    elapsedIntervalRef.current = window.setInterval(() => {
-      setElapsedMs(performance.now() - genStartRef.current);
-    }, 200);
-    setGenerationStep(
-      productKind === 'flowers'
-        ? 'Analyzing bloom shape, petals & arrangement...'
-        : 'Analyzing toy features, materials & proportions...'
-    );
+    if (jobsRef.current.length >= MAX_CONCURRENT_GENERATIONS) {
+      return;
+    }
 
-    // Progress animation timers for user feedback
-    const t1 = setTimeout(() => {
-      setGenerationStep('Building virtual studio lighting & shadow physics...');
-    }, 2000);
+    const snapshotStyleRef =
+      selectedStyleRef && isPromoImageStyle(selectedStyle) && selectedStyleRef.style === selectedStyle
+        ? selectedStyleRef
+        : null;
 
-    const t2 = setTimeout(() => {
-      setGenerationStep(
-        productKind === 'flowers'
-          ? 'Rendering e-commerce studio shot with exact floral preservation...'
-          : 'Rendering e-commerce studio shot with exact toy preservation...'
-      );
-    }, 4500);
+    const snapshot = {
+      imagePreviewUrl,
+      mimeType,
+      productName,
+      toySizeCm,
+      productKind,
+      description,
+      style: selectedStyle,
+      personScale: productKind === 'flowers' ? 'none' : selectedScale,
+      styleRef: snapshotStyleRef,
+      apiKey: getActiveApiKey(apiSettings),
+      openaiImageModel: apiSettings.openaiImageModel,
+    };
+
+    const job: GenerationJob = {
+      id: crypto.randomUUID(),
+      startedAt: performance.now(),
+      style: snapshot.style,
+      productName: snapshot.productName.trim() || (snapshot.productKind === 'flowers' ? 'Bouquet' : 'Toy'),
+    };
+
+    jobsRef.current = [job, ...jobsRef.current];
+    setJobs(jobsRef.current);
 
     try {
-      const reference = await normalizeReferenceImage(imagePreviewUrl);
+      const reference = await normalizeReferenceImage(snapshot.imagePreviewUrl);
 
       const response = await fetch('/api/generate-photo', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           imageBase64: reference.dataUrl,
-          mimeType: reference.mimeType || mimeType || 'image/jpeg',
-          productName: productName.trim(),
-          toySizeCm: sizeCmForProduct(productKind, toySizeCm) ?? (productKind === 'toy' ? '20' : undefined),
-          productDescription: description.trim(),
-          productKind,
-          style: selectedStyle,
-          personScale: productKind === 'flowers' ? 'none' : selectedScale,
-          ...(selectedStyleRef
-            ? { styleRefId: selectedStyleRef.id, styleRefPrompt: selectedStyleRef.prompt }
+          mimeType: reference.mimeType || snapshot.mimeType || 'image/jpeg',
+          productName: snapshot.productName.trim(),
+          toySizeCm: sizeCmForProduct(snapshot.productKind, snapshot.toySizeCm) ?? (snapshot.productKind === 'toy' ? '20' : undefined),
+          productDescription: snapshot.description.trim(),
+          productKind: snapshot.productKind,
+          style: snapshot.style,
+          personScale: snapshot.personScale,
+          ...(snapshot.styleRef
+            ? { styleRefId: snapshot.styleRef.id, styleRefPrompt: snapshot.styleRef.prompt }
             : {}),
-          apiKey: getActiveApiKey(apiSettings),
-          openaiImageModel: apiSettings.openaiImageModel,
+          apiKey: snapshot.apiKey,
+          openaiImageModel: snapshot.openaiImageModel,
         }),
       });
 
@@ -261,55 +288,55 @@ export default function App() {
       }
 
       const data = await response.json();
-      const usedKind = parseProductKind(data.productKind ?? productKind);
+      const usedKind = parseProductKind(data.productKind ?? snapshot.productKind);
       const switchedFrom: ProductKind | undefined =
         data.kindSwitchedFrom === 'toy' || data.kindSwitchedFrom === 'flowers'
           ? data.kindSwitchedFrom
           : undefined;
 
-      if (switchedFrom) {
-        applyDetectedKind(usedKind, switchedFrom);
-      } else {
-        setProductKind(usedKind);
+      if (productKindRef.current === snapshot.productKind) {
+        if (switchedFrom) {
+          applyDetectedKind(usedKind, switchedFrom);
+        } else {
+          setProductKind(usedKind);
+        }
       }
 
       const newResult: GeneratedResult = {
-        id: crypto.randomUUID(),
+        id: job.id,
         imageUrl: data.imageUrl,
-        originalImageUrl: imagePreviewUrl,
-        productTitle: data.productTitle || productName,
+        originalImageUrl: snapshot.imagePreviewUrl,
+        productTitle: data.productTitle || snapshot.productName,
         sellingLine: data.sellingLine || '',
-        marketingDescription: data.marketingDescription || description,
-        style: selectedStyle,
-        personScale: usedKind === 'flowers' ? 'none' : selectedScale,
-        productName: productName,
-        toySizeCm: sizeCmForProduct(usedKind, data.toySizeCm ?? toySizeCm),
+        marketingDescription: data.marketingDescription || snapshot.description,
+        style: snapshot.style,
+        personScale: usedKind === 'flowers' ? 'none' : snapshot.personScale,
+        productName: snapshot.productName,
+        toySizeCm: sizeCmForProduct(usedKind, data.toySizeCm ?? snapshot.toySizeCm),
         productKind: usedKind,
         kindSwitchedFrom: switchedFrom,
         generatedAt: new Date().toISOString(),
-        durationMs: Math.round(performance.now() - genStartRef.current),
+        durationMs: Math.round(performance.now() - job.startedAt),
       };
+
+      if (errorJobIdRef.current === job.id) {
+        errorJobIdRef.current = null;
+        setError(null);
+      }
 
       setResult(newResult);
       saveSelectedShotId(newResult.id);
       commitShots([newResult, ...shotsRef.current.filter((shot) => shot.id !== newResult.id)]);
 
-      // Smooth scroll to result
       setTimeout(() => {
         resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }, 150);
     } catch (err: unknown) {
       console.error('Generation failed:', err);
+      errorJobIdRef.current = job.id;
       setError(readNetworkError(err, 'An error occurred during generation.'));
     } finally {
-      clearTimeout(t1);
-      clearTimeout(t2);
-      if (elapsedIntervalRef.current) {
-        window.clearInterval(elapsedIntervalRef.current);
-        elapsedIntervalRef.current = null;
-      }
-      setIsGenerating(false);
-      setGenerationStep('');
+      dropJob(job.id);
     }
   };
 
@@ -329,7 +356,7 @@ export default function App() {
                 <p className="text-[11px] text-slate-400">Configure lighting, style & scale</p>
               </div>
               <div className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full uppercase">
-                Ready
+                {runningCount > 0 ? `Rendering (${runningCount})` : 'Ready'}
               </div>
             </div>
 
@@ -435,22 +462,28 @@ export default function App() {
               <button
                 type="button"
                 onClick={handleGenerateImage}
-                disabled={isGenerating || !imagePreviewUrl}
-                title={`${shotPrice.perImage} · ${shotPrice.model}`}
+                disabled={atGenerationCap || !imagePreviewUrl}
+                title={
+                  atGenerationCap
+                    ? `${MAX_CONCURRENT_GENERATIONS} shots rendering — wait for one to finish`
+                    : `${shotPrice.perImage} · ${shotPrice.model}`
+                }
                 className={`w-full py-3.5 px-4 rounded-xl text-sm font-bold flex items-center gap-2 transition-all duration-150 cursor-pointer ${
-                  isGenerating
+                  atGenerationCap
                     ? 'justify-between bg-indigo-600/80 text-white cursor-not-allowed'
                     : !imagePreviewUrl
                     ? 'justify-between bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
                     : 'justify-between bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white shadow-lg shadow-indigo-100'
                 }`}
               >
-                {isGenerating ? (
+                {atGenerationCap ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin text-white shrink-0" />
-                    <span className="truncate">{generationStep || 'Rendering Studio Shot...'}</span>
+                    <span className="truncate">
+                      {MAX_CONCURRENT_GENERATIONS} shots rendering — wait for one to finish
+                    </span>
                     <span className="shrink-0 tabular-nums text-[11px] font-bold tracking-tight px-2 py-0.5 rounded-md bg-white/20 text-white">
-                      {formatElapsed(elapsedMs)}
+                      {formatElapsed(oldestElapsedMs)}
                     </span>
                   </>
                 ) : (
@@ -473,8 +506,8 @@ export default function App() {
               </button>
 
               <p className="text-center text-[11px] text-slate-400 mt-2 font-medium">
-                {isGenerating
-                  ? `Elapsed ${formatElapsed(elapsedMs)}`
+                {runningCount > 0
+                  ? `Rendering ${runningCount === 1 ? '1 shot' : `${runningCount} shots`} · ${formatElapsed(oldestElapsedMs)}`
                   : !imagePreviewUrl
                     ? `Upload a ${productKind === 'flowers' ? 'flower' : 'toy'} photo to start · ${shotPrice.perImage}`
                     : `${shotPrice.perImage} · ${shotPrice.model} · billed to your OpenAI key`}
@@ -487,7 +520,7 @@ export default function App() {
             <SessionGallery
               shots={shots}
               selectedId={result?.id ?? null}
-              isGenerating={isGenerating}
+              pendingJobs={jobs}
               onSelect={handleSelectShot}
               onRemove={handleRemoveShot}
               onClearAll={handleClearAllShots}
@@ -497,11 +530,10 @@ export default function App() {
               <ResultView
                 result={result}
                 onRegenerate={handleGenerateImage}
-                isRegenerating={isGenerating}
+                regenerateDisabled={atGenerationCap}
                 shotPriceLabel={shotPrice.label}
-                elapsedMs={elapsedMs}
               />
-            ) : isGenerating ? (
+            ) : runningCount > 0 ? (
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 sm:p-12 flex flex-col items-center justify-center text-center min-h-[460px] space-y-5">
                 <div className="w-16 h-16 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shadow-sm animate-pulse">
                   <Loader2 className="w-8 h-8 animate-spin" />
@@ -511,10 +543,12 @@ export default function App() {
                     Generating Studio Photography
                   </h3>
                   <p className="text-xs text-indigo-600 font-semibold animate-fade-in">
-                    {generationStep || 'Simulating soft-box lighting & calibrated reflections...'}
+                    {runningCount === 1
+                      ? 'Rendering studio shot...'
+                      : `Rendering ${runningCount} studio shots...`}
                   </p>
                   <p className="text-2xl font-bold text-slate-900 tabular-nums pt-1">
-                    {formatElapsed(elapsedMs)}
+                    {formatElapsed(oldestElapsedMs)}
                   </p>
                   <p className="text-[11px] text-slate-400">
                     Time spent generating

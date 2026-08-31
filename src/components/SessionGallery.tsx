@@ -1,12 +1,12 @@
 import React from 'react';
 import { Images, X, Trash2, Loader2 } from 'lucide-react';
-import { GeneratedResult, ImageStyle } from '../types';
+import { GeneratedResult, GenerationJob, ImageStyle } from '../types';
 import { MAX_SESSION_SHOTS } from '../utils/sessionGallery';
 
 interface SessionGalleryProps {
   shots: GeneratedResult[];
   selectedId: string | null;
-  isGenerating?: boolean;
+  pendingJobs?: Pick<GenerationJob, 'id' | 'style' | 'productName'>[];
   onSelect: (shot: GeneratedResult) => void;
   onRemove: (shotId: string) => void;
   onClearAll: () => void;
@@ -34,12 +34,12 @@ function formatShotTime(iso: string): string {
 export const SessionGallery: React.FC<SessionGalleryProps> = ({
   shots,
   selectedId,
-  isGenerating = false,
+  pendingJobs = [],
   onSelect,
   onRemove,
   onClearAll,
 }) => {
-  if (shots.length === 0) return null;
+  if (shots.length === 0 && pendingJobs.length === 0) return null;
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-5 space-y-3">
@@ -59,29 +59,38 @@ export const SessionGallery: React.FC<SessionGalleryProps> = ({
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={onClearAll}
-          className="text-[11px] font-semibold text-slate-400 hover:text-red-600 flex items-center gap-1 transition-colors cursor-pointer shrink-0"
-        >
-          <Trash2 className="w-3 h-3" />
-          Clear
-        </button>
+        {shots.length > 0 && (
+          <button
+            type="button"
+            onClick={onClearAll}
+            className="text-[11px] font-semibold text-slate-400 hover:text-red-600 flex items-center gap-1 transition-colors cursor-pointer shrink-0"
+          >
+            <Trash2 className="w-3 h-3" />
+            Clear
+          </button>
+        )}
       </div>
 
       <div className="flex gap-2.5 overflow-x-auto touch-pan-x touch-pan-y pb-1 -mx-0.5 px-0.5">
-        {isGenerating && (
-          <div className="w-[92px] sm:w-[104px] shrink-0 rounded-xl overflow-hidden ring-1 ring-indigo-200 bg-indigo-50/70">
+        {pendingJobs.map((job) => (
+          <div
+            key={job.id}
+            className="w-[92px] sm:w-[104px] shrink-0 rounded-xl overflow-hidden ring-1 ring-indigo-200 bg-indigo-50/70"
+          >
             <div className="aspect-square flex flex-col items-center justify-center gap-1.5 text-indigo-600">
               <Loader2 className="w-5 h-5 animate-spin" />
               <span className="text-[9px] font-bold uppercase tracking-wider">Rendering</span>
             </div>
             <div className="px-1.5 py-1.5 bg-white border-t border-indigo-100">
-              <p className="text-[10px] font-bold text-indigo-700 leading-tight">New shot</p>
-              <p className="text-[9px] text-slate-400">In progress</p>
+              <p className="text-[10px] font-bold text-indigo-700 leading-tight truncate">
+                {job.productName || 'Product'}
+              </p>
+              <p className="text-[9px] text-slate-400 truncate">
+                {STYLE_LABEL[job.style]} · In progress
+              </p>
             </div>
           </div>
-        )}
+        ))}
         {shots.map((shot) => {
           const isSelected = shot.id === selectedId;
 

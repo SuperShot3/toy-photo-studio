@@ -38,6 +38,15 @@ export const BUILT_IN_STYLE_REFS: StyleSceneRef[] = [
     builtIn: true,
   },
   {
+    id: 'luxury-vintage-table',
+    style: 'luxury-promo',
+    name: 'Round vintage table',
+    prompt:
+      'Empty bright luxury salon: the product sits on a round antique walnut vintage table with a thin gold inlay ring around the rim and an ornate pedestal base. Cream paneled walls, pale herringbone floor, large window with sheer curtains. Soft natural daylight, luminous and airy — not dark or moody. Authentic wood grain. Keep the lower quarter of the frame calm and uncluttered for headline type. No extra props, no text.',
+    imageUrl: '/style-refs/luxury/luxury-vintage-table.jpg',
+    builtIn: true,
+  },
+  {
     id: 'promo-nursery-wood',
     style: 'styled-promo',
     name: 'Nursery wood',

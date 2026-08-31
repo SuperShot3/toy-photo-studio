@@ -115,6 +115,16 @@ export interface GeneratedResult {
   durationMs?: number;
 }
 
+/** In-flight studio renders. Cap keeps OpenAI rate limits and cost in check. */
+export const MAX_CONCURRENT_GENERATIONS = 3;
+
+export interface GenerationJob {
+  id: string;
+  startedAt: number;
+  style: ImageStyle;
+  productName: string;
+}
+
 export interface ImproveDescriptionRequest {
   productName: string;
   toySizeCm?: string | number;
