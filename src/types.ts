@@ -1,8 +1,8 @@
 export type ImageStyle = 'clean-catalog' | 'styled-promo' | 'luxury-promo';
 export type PromoImageStyle = 'styled-promo' | 'luxury-promo';
 export type PersonScale = 'none' | 'child' | 'adult';
-export type ProductKind = 'toy' | 'flowers' | 'balloons' | 'candy';
-export type ProductSubject = ProductKind | 'other';
+export type ProductKind = 'toy' | 'flowers' | 'balloons' | 'candy' | 'other';
+export type ProductSubject = ProductKind;
 
 export interface ProductKindMeta {
   id: ProductKind;
@@ -71,6 +71,19 @@ export const PRODUCT_KIND_META: Record<ProductKind, ProductKindMeta> = {
     uploadLabel: 'Candy Photo Reference',
     altLabel: 'Uploaded candy product',
   },
+  other: {
+    id: 'other',
+    name: 'Other',
+    hint: 'Any other product',
+    singular: 'product',
+    studioName: 'Product',
+    defaultName: 'Product',
+    namePlaceholder: 'e.g. Ceramic Pour-Over Kettle',
+    notesPlaceholder: 'Materials, colors, size, packaging, or key details...',
+    specsHint: 'Name & listing notes',
+    uploadLabel: 'Product Photo Reference',
+    altLabel: 'Uploaded product',
+  },
 };
 
 export const PRODUCT_KIND_OPTIONS: ProductKindMeta[] = [
@@ -78,6 +91,7 @@ export const PRODUCT_KIND_OPTIONS: ProductKindMeta[] = [
   PRODUCT_KIND_META.toy,
   PRODUCT_KIND_META.balloons,
   PRODUCT_KIND_META.candy,
+  PRODUCT_KIND_META.other,
 ];
 
 export function isPromoImageStyle(style: ImageStyle): style is PromoImageStyle {
@@ -85,7 +99,13 @@ export function isPromoImageStyle(style: ImageStyle): style is PromoImageStyle {
 }
 
 export function asProductKind(value: unknown): ProductKind | undefined {
-  if (value === 'toy' || value === 'flowers' || value === 'balloons' || value === 'candy') {
+  if (
+    value === 'toy' ||
+    value === 'flowers' ||
+    value === 'balloons' ||
+    value === 'candy' ||
+    value === 'other'
+  ) {
     return value;
   }
   return undefined;
@@ -151,14 +171,23 @@ export function parseProductSubject(value: unknown): ProductSubject | null {
     normalized === 'other' ||
     normalized === 'neither' ||
     normalized === 'unknown' ||
-    normalized === 'none'
+    normalized === 'none' ||
+    normalized === 'product' ||
+    normalized === 'general'
   ) {
     return 'other';
   }
+  if (normalized) return 'other';
   return null;
 }
 
 export function kindSwitchNotice(from: ProductKind, to: ProductKind): string {
+  if (to === 'other') {
+    return `This photo is not ${PRODUCT_KIND_META[from].name.toLowerCase()}, so we used a general product studio instead of ${PRODUCT_KIND_META[from].studioName}.`;
+  }
+  if (from === 'other') {
+    return `This photo looks like ${PRODUCT_KIND_META[to].name.toLowerCase()}, so we used the ${PRODUCT_KIND_META[to].studioName} studio.`;
+  }
   return `This photo looks like ${PRODUCT_KIND_META[to].name.toLowerCase()}, so we used the ${PRODUCT_KIND_META[to].studioName} studio instead of ${PRODUCT_KIND_META[from].studioName}.`;
 }
 

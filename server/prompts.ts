@@ -20,6 +20,7 @@ function subjectNoun(kind: ProductKind): string {
   if (kind === "flowers") return "flowers";
   if (kind === "balloons") return "balloons";
   if (kind === "candy") return "candy";
+  if (kind === "other") return "product";
   return "toy";
 }
 
@@ -27,11 +28,12 @@ function subjectLabel(kind: ProductKind): string {
   if (kind === "flowers") return "flowers / bouquet";
   if (kind === "balloons") return "balloons / balloon bouquet";
   if (kind === "candy") return "candy / confectionery";
+  if (kind === "other") return "product";
   return "toy";
 }
 
 function subjectVerb(kind: ProductKind): "are" | "is" {
-  return kind === "toy" ? "is" : "are";
+  return kind === "flowers" || kind === "balloons" || kind === "candy" ? "are" : "is";
 }
 
 function buildStyleInstructions(
@@ -85,6 +87,23 @@ STYLE 1 — CLEAN CATALOG:
 - Keep wrapper colors, logos, foil, sugar texture, and piece count identical to the reference. Do not unwrap, rebrand, or invent new candy.
 - Razor-sharp edges with no background distraction, no clutter, no extra decorative props.
 - No text, labels, or watermarks on the image beyond packaging already on the product.
+`,
+        backgroundGuidance:
+          "clean pure white studio background with soft realistic contact shadow",
+      };
+    }
+    if (kind === "other") {
+      return {
+        styleInstructions: `
+STYLE 1 — CLEAN CATALOG:
+- Create a crisp, ultra-clean professional e-commerce catalog photograph of the exact product from the reference.
+- Clean pure white or very light neutral studio background (solid #F8F9FA or pure white).
+- The exact product from the reference image must be centered, shown as it naturally sits or stands. Do not restage into a different pose or container.
+- Soft, professional diffused studio lighting from dual key/fill softboxes. Change lighting and background only.
+- Soft, realistic contact shadow on the surface beneath the product.
+- Keep color, materials, logos, packaging, and unique details identical to the reference. Do not retouch, rebrand, or invent new features.
+- Razor-sharp edges with no background distraction, no clutter, no extra decorative props.
+- No text, labels, or watermarks on the image beyond marks already on the product.
 `,
         backgroundGuidance:
           "clean pure white studio background with soft realistic contact shadow",
@@ -159,6 +178,23 @@ STYLE 2 — STYLED PROMO:
           "tasteful soft-focus confectionery / gift-table lifestyle setting with open lower third for headline type",
       };
     }
+    if (kind === "other") {
+      return {
+        styleInstructions: `
+STYLE 2 — STYLED PROMO:
+- Create an attractive, warm commercial lifestyle image suitable for selling this product online — composed like a shop ad or banner that will receive a product-name headline later.
+- The EXACT product from the uploaded reference photo is the dominant, crisp foreground hero subject.
+- Contextual background: A tasteful lifestyle setting that fits the product, with soft shallow depth-of-field blur (such as a linen table, marble counter, wooden shelf, or airy boutique window light). Do NOT add extra products or clutter that were not in the reference.
+- Warm, natural daylight with gentle rim glow and rich ambient atmosphere.
+- Keep the product 100% identical to the original reference: shape, materials, colors, logos, and packaging. Do not restyle, rebrand, or invent new details.
+- Realistic surface reflections and natural cast shadows.
+- COMPOSITION FOR TYPE: Place the product in the upper two-thirds of the frame. Leave a clean, uncluttered lower band (about the bottom 22%) with soft falloff and no busy props, so a product name and selling line can sit on the photo.
+- Do NOT render any text, letters, logos, captions, watermarks, or labels in the photograph beyond marks already on the product.
+`,
+        backgroundGuidance:
+          "tasteful soft-focus lifestyle / boutique setting with open lower third for headline type",
+      };
+    }
     return {
       styleInstructions: `
 STYLE 2 — STYLED PROMO:
@@ -230,6 +266,25 @@ STYLE 3 — LUXURY PROMO:
 `,
       backgroundGuidance:
         "architectural stone plinth, luxury draped fabric, elegant high-end confectionery studio lighting with open lower third for headline type — original candy unchanged",
+    };
+  }
+
+  if (kind === "other") {
+    return {
+      styleInstructions: `
+STYLE 3 — LUXURY PROMO:
+- Create a premium high-end luxury advertising campaign photo of this product — composed like a magazine ad that will receive elegant product-name typography later.
+- The EXACT product from the reference photo is displayed as a prestigious hero piece.
+- Keep the original shape, materials, packaging, logos, and arrangement from the reference. Do NOT restyle, rebrand, or add extra items.
+- Place that unchanged product in a luxury studio setting: a minimalist architectural podium, travertine stone plinth, or softly draped luxury textured fabric behind/beneath it.
+- Premium studio spotlighting with dramatic yet soft directional falloff, subtle warm rim lighting. Lighting and background only — do not change product color or appearance.
+- Clean luxury aesthetic, gift-like prestige presentation with rich, deep, refined tonality.
+- Flawless commercial lighting and soft elegant shadows.
+- COMPOSITION FOR TYPE: Keep the product in the upper two-thirds. Leave a calm, dark-to-soft lower band (about the bottom 24%) free of objects so a product name can be printed on the image.
+- Do NOT render any text, letters, logos, captions, watermarks, or labels in the photograph beyond marks already on the product.
+`,
+      backgroundGuidance:
+        "architectural stone plinth, luxury draped fabric, elegant high-end studio lighting with open lower third for headline type — original product unchanged",
     };
   }
 
@@ -383,6 +438,27 @@ Do NOT add or remove pieces, change wrappers, or invent extra decorations.
 `;
   }
 
+  if (kind === "other") {
+    return `
+CRITICAL INSTRUCTION - PRODUCT PRESERVATION:
+You are a world-class professional commercial product photographer.
+The uploaded image contains the EXACT product. Keep that product original.
+
+MOST IMPORTANT RULE:
+The uploaded product must ALWAYS be treated as the exact, unaltered product reference.
+DO NOT CREATE A DIFFERENT PRODUCT.
+DO NOT improve, beautify, recolor, retouch, or "enhance" the product itself.
+PRESERVE 100% IDENTICALLY:
+- exact shape, proportions, and silhouette
+- colors, materials, textures, and finishes
+- logos, labels, packaging, and unique details if present
+- overall product identity and character
+
+ONLY lighting, background, and studio setting may change.
+Do NOT redesign, restage into a different object, or invent extra items.
+`;
+  }
+
   return `
 CRITICAL INSTRUCTION - PRODUCT PRESERVATION:
 You are a world-class professional commercial product photographer and editor.
@@ -405,7 +481,7 @@ The purpose is to improve the original product photography and lighting in a pro
 
 export function buildSubjectClassifyPrompt(): string {
   return `
-Look only at the uploaded photo. Classify the main product subject.
+Look only at the uploaded photo. Classify the main product subject so studio lighting and copy can match it.
 
 Return a JSON object with EXACTLY this key:
 - "kind": one of "toy", "flowers", "balloons", "candy", or "other"
@@ -415,7 +491,7 @@ Rules:
 - "flowers": real flowers, blooms, bouquets, plants, potted flowers, florist arrangements. Not a toy.
 - "balloons": latex, foil, Mylar, number, or character balloons, balloon bunches, balloon bouquets. The main product is balloons, not a toy that happens to hold a balloon.
 - "candy": sweets, chocolate, lollipops, hard candy, wrapped confectionery, candy boxes or bags sold as the product. Not a meal, bakery cake, or unrelated food.
-- "other": anything that is none of the above (clothing, furniture, electronics, scenery, people-only, animals that are not toys, savory food, etc.).
+- "other": any other sellable product (home goods, clothing, furniture, electronics, kitchenware, cosmetics, and similar). Use this whenever the main subject is not a toy, flowers, balloons, or candy. Still photograph it as a product. Do not reject the photo.
 
 Respond with valid JSON only. No markdown.
 `;
@@ -547,6 +623,23 @@ Return a JSON object with EXACTLY these three keys:
 1. "productTitle": A clean, SEO-optimized, appealing e-commerce title (approx 5-10 words). Include candy type and a flavor or gift cue if known.
 2. "sellingLine": A single, punchy, emotive one-liner selling hook (10-20 words).
 3. "productDescription": A concise, polished 2-3 paragraph marketing description highlighting flavor, wrappers, piece count or box, and gift or party occasion. Do NOT mention toys, play, size in cm, or age suitability.
+
+Respond strictly with valid JSON only. Do not include markdown ticks or code fences if possible.
+`;
+  }
+
+  if (kind === "other") {
+    return `
+You are a professional e-commerce copywriter specializing in product listings for Amazon, Etsy, Shopify, and boutique shops.
+
+Based on the provided product details:
+- Product name input: "${productName || "Product"}"
+- Rough user notes/description: "${roughDescription || ""}"
+
+Return a JSON object with EXACTLY these three keys:
+1. "productTitle": A clean, SEO-optimized, appealing e-commerce title (approx 5-10 words). Include the product type and a key material or use cue if known.
+2. "sellingLine": A single, punchy, emotive one-liner selling hook (10-20 words).
+3. "productDescription": A concise, polished 2-3 paragraph marketing description highlighting materials, craft, everyday use, and gift or shop appeal. Write for the actual product in the photo or notes. Do NOT assume it is a toy, flowers, balloons, or candy unless those details are clearly present.
 
 Respond strictly with valid JSON only. Do not include markdown ticks or code fences if possible.
 `;

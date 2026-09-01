@@ -21,9 +21,6 @@ import {
   type ProductSubject,
 } from "../src/types.js";
 
-const UNSUPPORTED_SUBJECT_MESSAGE =
-  "This photo does not look like a toy, flowers, balloons, or candy. Upload one of those product photos, then try again.";
-
 function copyFallback(
   productKind: ProductKind,
   params: { productName?: string; roughDescription?: string }
@@ -53,6 +50,15 @@ function copyFallback(
       productDescription:
         params.roughDescription ||
         "A carefully presented candy assortment with original wrappers and rich color, ready to gift or display.",
+    };
+  }
+  if (productKind === "other") {
+    return {
+      productTitle: params.productName || "Studio Product",
+      sellingLine: "True-to-life product photography, ready for your shop.",
+      productDescription:
+        params.roughDescription ||
+        "A carefully photographed product with true-to-life color, materials, and details.",
     };
   }
   return {
@@ -242,19 +248,11 @@ function resolveKindFromImage(
   selectedKind: ProductKind,
   detected: ProductSubject | null
 ): { productKind: ProductKind; kindSwitchedFrom?: ProductKind } {
-  if (detected === "other") {
-    throw new HttpError(UNSUPPORTED_SUBJECT_MESSAGE, 400);
-  }
-
-  if (!detected) {
+  if (!detected || detected === selectedKind) {
     return { productKind: selectedKind };
   }
 
-  if (detected !== selectedKind) {
-    return { productKind: detected, kindSwitchedFrom: selectedKind };
-  }
-
-  return { productKind: detected };
+  return { productKind: detected, kindSwitchedFrom: selectedKind };
 }
 
 export async function improveDescription(

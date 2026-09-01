@@ -563,7 +563,7 @@ export default function App() {
                     Studio Photo Preview Canvas
                   </h3>
                   <p className="text-xs text-slate-500 leading-relaxed">
-                    Upload a {productKindMeta(productKind).singular} snapshot on the left, pick your photography style, and click <span className="font-semibold text-indigo-600">Generate Professional Shot</span> to get clean catalog and promo images.
+                    Upload a {productKindMeta(productKind).singular} snapshot on the left, pick the closest subject type, and click <span className="font-semibold text-indigo-600">Generate Professional Shot</span> to get clean catalog and promo images.
                   </p>
                   {(selectedStyle === 'styled-promo' || selectedStyle === 'luxury-promo') && (
                     <p className="text-[11px] text-slate-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 leading-relaxed">

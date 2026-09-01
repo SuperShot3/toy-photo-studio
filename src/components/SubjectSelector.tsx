@@ -16,8 +16,11 @@ export const SubjectSelector: React.FC<SubjectSelectorProps> = ({
         <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider">
           Subject
         </label>
-        <span className="text-[10px] text-slate-400">Sets lighting, scene & copy</span>
+        <span className="text-[10px] text-slate-400">Guides lighting, scene & copy</span>
       </div>
+      <p className="text-[10px] text-slate-400 leading-relaxed">
+        Any product photo works. Pick the closest type so the studio knows what it is.
+      </p>
 
       <div className="grid grid-cols-2 gap-2">
         {PRODUCT_KIND_OPTIONS.map((opt) => {
@@ -28,6 +31,8 @@ export const SubjectSelector: React.FC<SubjectSelectorProps> = ({
               type="button"
               onClick={() => onKindSelect(opt.id)}
               className={`py-2 px-2 rounded-lg transition-all cursor-pointer ${
+                opt.id === 'other' ? 'col-span-2' : ''
+              } ${
                 isSelected
                   ? 'bg-indigo-600 text-white shadow-sm'
                   : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
