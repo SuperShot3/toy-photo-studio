@@ -8,10 +8,12 @@ import {
   StudioPromptParams,
 } from "./prompts.js";
 import {
+  defaultProductName,
   parseOpenAiImageModel,
   parseProductKind,
   parseProductSubject,
   sizeCmForProduct,
+  usesPersonScale,
   type ImageStyle,
   type OpenAiImageModel,
   type PersonScale,
@@ -20,7 +22,47 @@ import {
 } from "../src/types.js";
 
 const UNSUPPORTED_SUBJECT_MESSAGE =
-  "This photo does not look like a toy or flowers. Upload a toy or flower product photo, then try again.";
+  "This photo does not look like a toy, flowers, balloons, or candy. Upload one of those product photos, then try again.";
+
+function copyFallback(
+  productKind: ProductKind,
+  params: { productName?: string; roughDescription?: string }
+): ImprovedCopyResult {
+  if (productKind === "flowers") {
+    return {
+      productTitle: params.productName || "Fresh Garden Bouquet",
+      sellingLine: "A hand-tied arrangement of true-to-life blooms, ready to gift or display.",
+      productDescription:
+        params.roughDescription ||
+        "A carefully arranged bouquet with vivid color and natural foliage, photographed as it will look on arrival.",
+    };
+  }
+  if (productKind === "balloons") {
+    return {
+      productTitle: params.productName || "Celebration Balloon Bouquet",
+      sellingLine: "Party-ready balloons in true-to-life color, photographed as they will arrive.",
+      productDescription:
+        params.roughDescription ||
+        "A festive balloon arrangement with vivid color and clean finishes, ready for birthdays, events, and gifts.",
+    };
+  }
+  if (productKind === "candy") {
+    return {
+      productTitle: params.productName || "Wrapped Confectionery Candy",
+      sellingLine: "Sweet, gift-ready candy with true-to-life wrappers and color.",
+      productDescription:
+        params.roughDescription ||
+        "A carefully presented candy assortment with original wrappers and rich color, ready to gift or display.",
+    };
+  }
+  return {
+    productTitle: params.productName || "Handcrafted Classic Toy",
+    sellingLine: "Delightful quality toy designed for joyful play and cherished memories.",
+    productDescription:
+      params.roughDescription ||
+      "A beautifully crafted toy made with care, offering endless imagination and tactile delight for children and collectors alike.",
+  };
+}
 
 export interface AiConfig {
   apiKey: string;
@@ -240,22 +282,7 @@ export async function improveDescription(
     kindSwitchedFrom = resolved.kindSwitchedFrom;
   }
 
-  const floral = productKind === "flowers";
-  const fallback: ImprovedCopyResult = floral
-    ? {
-        productTitle: params.productName || "Fresh Garden Bouquet",
-        sellingLine: "A hand-tied arrangement of true-to-life blooms, ready to gift or display.",
-        productDescription:
-          params.roughDescription ||
-          "A carefully arranged bouquet with vivid color and natural foliage, photographed as it will look on arrival.",
-      }
-    : {
-        productTitle: params.productName || "Handcrafted Classic Toy",
-        sellingLine: "Delightful quality toy designed for joyful play and cherished memories.",
-        productDescription:
-          params.roughDescription ||
-          "A beautifully crafted toy made with care, offering endless imagination and tactile delight for children and collectors alike.",
-      };
+  const fallback = copyFallback(productKind, params);
 
   const promptText = buildImproveDescriptionPrompt({
     ...params,
@@ -341,7 +368,7 @@ async function generateImageOpenAI(
   const ext = extensionForMime(mimeType);
   const bytes = new Uint8Array(buffer);
   let lastError: unknown;
-  const floral = productKind === "flowers";
+  const highFidelity = productKind !== "toy";
 
   for (const candidate of fallbackModels(model)) {
     const extras: ImageEditExtras = {
@@ -349,7 +376,7 @@ async function generateImageOpenAI(
       output_format: "jpeg",
       output_compression: 85,
       ...(supportsInputFidelity(candidate)
-        ? { input_fidelity: floral ? ("high" as const) : ("low" as const) }
+        ? { input_fidelity: highFidelity ? ("high" as const) : ("low" as const) }
         : {}),
     };
 
@@ -440,7 +467,7 @@ export async function generatePhoto(
   const { productKind, kindSwitchedFrom } = resolveKindFromImage(selectedKind, detected);
 
   const productName =
-    String(params.productName || "").trim() || (productKind === "flowers" ? "Bouquet" : "Toy");
+    String(params.productName || "").trim() || defaultProductName(productKind);
   const toySizeCm =
     sizeCmForProduct(productKind, params.toySizeCm) ??
     (productKind === "toy" ? 20 : undefined);
@@ -451,7 +478,7 @@ export async function generatePhoto(
     productDescription: params.productDescription,
     productKind,
     style: params.style,
-    personScale: params.personScale,
+    personScale: usesPersonScale(productKind) ? params.personScale : "none",
     styleRefPrompt:
       params.style === "styled-promo" || params.style === "luxury-promo"
         ? params.styleRefPrompt?.trim() || undefined

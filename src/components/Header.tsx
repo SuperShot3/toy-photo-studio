@@ -23,7 +23,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSettings }) => {
               </span>
             </div>
             <p className="text-xs text-slate-500 hidden md:block">
-              Turn ordinary phone snapshots of toys or flowers into studio product images
+              Turn ordinary phone snapshots of toys, flowers, balloons, or candy into studio product images
             </p>
           </div>
         </div>

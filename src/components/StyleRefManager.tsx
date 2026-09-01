@@ -253,7 +253,7 @@ export const StyleRefManager: React.FC<StyleRefManagerProps> = ({
                       }
                       rows={5}
                       maxLength={STYLE_REF_PROMPT_MAX}
-                      placeholder="Describe the empty scene: lighting, surface, palette. Keep the lower 22–24% calm for type. Do not mention a toy or flowers."
+                      placeholder="Describe the empty scene: lighting, surface, palette. Keep the lower 22–24% calm for type. Do not mention the product."
                       className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none resize-none"
                     />
                   </div>

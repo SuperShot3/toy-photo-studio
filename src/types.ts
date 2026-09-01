@@ -1,15 +1,114 @@
 export type ImageStyle = 'clean-catalog' | 'styled-promo' | 'luxury-promo';
 export type PromoImageStyle = 'styled-promo' | 'luxury-promo';
 export type PersonScale = 'none' | 'child' | 'adult';
-export type ProductKind = 'toy' | 'flowers';
+export type ProductKind = 'toy' | 'flowers' | 'balloons' | 'candy';
 export type ProductSubject = ProductKind | 'other';
+
+export interface ProductKindMeta {
+  id: ProductKind;
+  name: string;
+  hint: string;
+  singular: string;
+  studioName: string;
+  defaultName: string;
+  namePlaceholder: string;
+  notesPlaceholder: string;
+  specsHint: string;
+  uploadLabel: string;
+  altLabel: string;
+}
+
+export const PRODUCT_KIND_META: Record<ProductKind, ProductKindMeta> = {
+  flowers: {
+    id: 'flowers',
+    name: 'Flowers',
+    hint: 'Blooms, bouquets, plants',
+    singular: 'flower',
+    studioName: 'Flowers',
+    defaultName: 'Bouquet',
+    namePlaceholder: 'e.g. Garden Rose Bouquet',
+    notesPlaceholder: 'Bloom types, stem count, wrapping, or occasion...',
+    specsHint: 'Name & listing notes',
+    uploadLabel: 'Flower Photo Reference',
+    altLabel: 'Uploaded flower product',
+  },
+  toy: {
+    id: 'toy',
+    name: 'Toys',
+    hint: 'Figures, wood, plush',
+    singular: 'toy',
+    studioName: 'Toys',
+    defaultName: 'Toy',
+    namePlaceholder: 'e.g. Handcrafted Oak Wood Train',
+    notesPlaceholder: 'Briefly describe materials, colors, age group, or key details...',
+    specsHint: 'Accurate scale & SEO details',
+    uploadLabel: 'Toy Photo Reference',
+    altLabel: 'Uploaded toy product',
+  },
+  balloons: {
+    id: 'balloons',
+    name: 'Balloons',
+    hint: 'Latex, foil, bunches',
+    singular: 'balloon',
+    studioName: 'Balloons',
+    defaultName: 'Balloon Bouquet',
+    namePlaceholder: 'e.g. Gold Number Balloon Bouquet',
+    notesPlaceholder: 'Latex or foil, colors, prints, count, or occasion...',
+    specsHint: 'Name & listing notes',
+    uploadLabel: 'Balloon Photo Reference',
+    altLabel: 'Uploaded balloon product',
+  },
+  candy: {
+    id: 'candy',
+    name: 'Candy',
+    hint: 'Sweets, chocolate, treats',
+    singular: 'candy',
+    studioName: 'Candy',
+    defaultName: 'Candy',
+    namePlaceholder: 'e.g. Wrapped Fruit Hard Candy',
+    notesPlaceholder: 'Flavor, wrappers, piece count, box, or occasion...',
+    specsHint: 'Name & listing notes',
+    uploadLabel: 'Candy Photo Reference',
+    altLabel: 'Uploaded candy product',
+  },
+};
+
+export const PRODUCT_KIND_OPTIONS: ProductKindMeta[] = [
+  PRODUCT_KIND_META.flowers,
+  PRODUCT_KIND_META.toy,
+  PRODUCT_KIND_META.balloons,
+  PRODUCT_KIND_META.candy,
+];
 
 export function isPromoImageStyle(style: ImageStyle): style is PromoImageStyle {
   return style === 'styled-promo' || style === 'luxury-promo';
 }
 
+export function asProductKind(value: unknown): ProductKind | undefined {
+  if (value === 'toy' || value === 'flowers' || value === 'balloons' || value === 'candy') {
+    return value;
+  }
+  return undefined;
+}
+
 export function parseProductKind(value: unknown): ProductKind {
-  return value === 'flowers' ? 'flowers' : 'toy';
+  return asProductKind(value) ?? 'toy';
+}
+
+export function productKindMeta(kind: ProductKind | undefined): ProductKindMeta {
+  return PRODUCT_KIND_META[parseProductKind(kind)];
+}
+
+export function usesSizeCm(kind: ProductKind | undefined): boolean {
+  return parseProductKind(kind) === 'toy';
+}
+
+export function usesPersonScale(kind: ProductKind | undefined): boolean {
+  return parseProductKind(kind) === 'toy';
+}
+
+export function defaultProductName(kind: ProductKind | undefined): string {
+  return productKindMeta(kind).defaultName;
 }
 
 export function parseProductSubject(value: unknown): ProductSubject | null {
@@ -27,6 +126,28 @@ export function parseProductSubject(value: unknown): ProductSubject | null {
   }
   if (normalized === 'toy' || normalized === 'toys') return 'toy';
   if (
+    normalized === 'balloons' ||
+    normalized === 'balloon' ||
+    normalized === 'helium balloon' ||
+    normalized === 'foil balloon' ||
+    normalized === 'balloon bouquet'
+  ) {
+    return 'balloons';
+  }
+  if (
+    normalized === 'candy' ||
+    normalized === 'candies' ||
+    normalized === 'sweets' ||
+    normalized === 'sweet' ||
+    normalized === 'confectionery' ||
+    normalized === 'confection' ||
+    normalized === 'chocolate' ||
+    normalized === 'lollipop' ||
+    normalized === 'lollipops'
+  ) {
+    return 'candy';
+  }
+  if (
     normalized === 'other' ||
     normalized === 'neither' ||
     normalized === 'unknown' ||
@@ -38,18 +159,15 @@ export function parseProductSubject(value: unknown): ProductSubject | null {
 }
 
 export function kindSwitchNotice(from: ProductKind, to: ProductKind): string {
-  if (to === 'flowers') {
-    return 'This photo looks like flowers, so we used the Flowers studio instead of Toys.';
-  }
-  return 'This photo looks like a toy, so we used the Toys studio instead of Flowers.';
+  return `This photo looks like ${PRODUCT_KIND_META[to].name.toLowerCase()}, so we used the ${PRODUCT_KIND_META[to].studioName} studio instead of ${PRODUCT_KIND_META[from].studioName}.`;
 }
 
-/** Size is a toy spec only. Flowers never carry a cm value. */
+/** Size is a toy spec only. Other subjects never carry a cm value. */
 export function sizeCmForProduct(
   kind: ProductKind | undefined,
   size: string | number | undefined | null
 ): string | undefined {
-  if (parseProductKind(kind) === 'flowers') return undefined;
+  if (!usesSizeCm(kind)) return undefined;
   if (size === undefined || size === null) return undefined;
   const trimmed = String(size).trim();
   return trimmed || undefined;

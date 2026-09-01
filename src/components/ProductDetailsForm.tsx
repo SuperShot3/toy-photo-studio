@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Sparkles, Wand2, Loader2, Check, ArrowRight } from 'lucide-react';
-import { ImprovedDescriptionResponse, ApiSettings, ProductKind, kindSwitchNotice } from '../types';
+import { ImprovedDescriptionResponse, ApiSettings, ProductKind, kindSwitchNotice, productKindMeta, usesSizeCm } from '../types';
 import { getActiveApiKey, isApiKeyConfigured } from '../utils/apiSettings';
 import { readApiError, readNetworkError } from '../utils/apiError';
 
@@ -35,6 +35,8 @@ export const ProductDetailsForm: React.FC<ProductDetailsFormProps> = ({
   onDetectedKind,
   apiSettings,
 }) => {
+  const kindMeta = productKindMeta(productKind);
+  const showSize = usesSizeCm(productKind);
   const [isImproving, setIsImproving] = useState(false);
   const [suggestion, setSuggestion] = useState<ImprovedDescriptionResponse | null>(null);
   const [improveError, setImproveError] = useState<string | null>(null);
@@ -59,7 +61,7 @@ export const ProductDetailsForm: React.FC<ProductDetailsFormProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           productName,
-          toySizeCm: productKind === 'flowers' ? undefined : toySizeCm,
+          toySizeCm: usesSizeCm(productKind) ? toySizeCm : undefined,
           productKind,
           roughDescription: description,
           imageBase64: imageBase64 || undefined,
@@ -99,13 +101,13 @@ export const ProductDetailsForm: React.FC<ProductDetailsFormProps> = ({
           2. Product Specifications
         </label>
         <span className="text-[11px] text-slate-400">
-          {productKind === 'flowers' ? 'Name & listing notes' : 'Accurate scale & SEO details'}
+          {kindMeta.specsHint}
         </span>
       </div>
 
-      <div className={`grid grid-cols-1 gap-3 ${productKind === 'toy' ? 'sm:grid-cols-3' : ''}`}>
+      <div className={`grid grid-cols-1 gap-3 ${showSize ? 'sm:grid-cols-3' : ''}`}>
         {/* Product Name */}
-        <div className={productKind === 'toy' ? 'sm:col-span-2' : ''}>
+        <div className={showSize ? 'sm:col-span-2' : ''}>
           <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1.5">
             Product Name{' '}
             {nameRequired ? (
@@ -120,7 +122,7 @@ export const ProductDetailsForm: React.FC<ProductDetailsFormProps> = ({
             type="text"
             value={productName}
             onChange={(e) => onProductNameChange(e.target.value)}
-            placeholder={productKind === 'flowers' ? 'e.g. Garden Rose Bouquet' : 'e.g. Handcrafted Oak Wood Train'}
+            placeholder={kindMeta.namePlaceholder}
             className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all placeholder:text-slate-400 font-medium"
           />
           {nameRequired && (
@@ -130,7 +132,7 @@ export const ProductDetailsForm: React.FC<ProductDetailsFormProps> = ({
           )}
         </div>
 
-        {productKind === 'toy' && (
+        {showSize && (
           <div>
             <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1.5">
               Toy Size (cm) <span className="text-indigo-600">*</span>
@@ -184,11 +186,7 @@ export const ProductDetailsForm: React.FC<ProductDetailsFormProps> = ({
           rows={2}
           value={description}
           onChange={(e) => onDescriptionChange(e.target.value)}
-          placeholder={
-            productKind === 'flowers'
-              ? 'Bloom types, stem count, wrapping, or occasion...'
-              : 'Briefly describe materials, colors, age group, or key details...'
-          }
+          placeholder={kindMeta.notesPlaceholder}
           className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 h-16 resize-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none placeholder:text-slate-400 font-medium transition-all"
         />
       </div>

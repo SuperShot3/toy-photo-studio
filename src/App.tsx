@@ -15,7 +15,7 @@ import { ResultView } from './components/ResultView';
 import { SessionGallery } from './components/SessionGallery';
 import { SettingsSheet } from './components/SettingsSheet';
 import { StyleRefManager } from './components/StyleRefManager';
-import { ImageStyle, PersonScale, ProductKind, GeneratedResult, GenerationJob, ImprovedDescriptionResponse, ApiSettings, OpenAiImageModel, parseProductKind, sizeCmForProduct, kindSwitchNotice, isPromoImageStyle, MAX_CONCURRENT_GENERATIONS } from './types';
+import { ImageStyle, PersonScale, ProductKind, GeneratedResult, GenerationJob, ImprovedDescriptionResponse, ApiSettings, OpenAiImageModel, parseProductKind, asProductKind, sizeCmForProduct, kindSwitchNotice, isPromoImageStyle, MAX_CONCURRENT_GENERATIONS, defaultProductName, productKindMeta, usesPersonScale, usesSizeCm } from './types';
 import { isPromoStyle } from './utils/promoOverlay';
 import { Sparkles, Loader2, AlertCircle, Info } from 'lucide-react';
 import { loadApiSettings, saveApiSettings, getActiveApiKey, isApiKeyConfigured } from './utils/apiSettings';
@@ -135,12 +135,12 @@ export default function App() {
     setMimeType(mimeFromDataUrl(shot.originalImageUrl));
     setProductName(shot.productName);
     setProductKind(kind);
-    if (kind !== 'flowers') {
+    if (usesSizeCm(kind)) {
       setToySizeCm(sizeCmForProduct(kind, shot.toySizeCm) ?? '25');
     }
     setDescription(shot.marketingDescription);
     setSelectedStyle(shot.style);
-    setSelectedScale(kind === 'flowers' ? 'none' : shot.personScale);
+    setSelectedScale(usesPersonScale(kind) ? shot.personScale : 'none');
   };
 
   const commitShots = (next: GeneratedResult[]) => {
@@ -153,7 +153,7 @@ export default function App() {
 
   const applyDetectedKind = (kind: ProductKind, switchedFrom?: ProductKind) => {
     setProductKind(kind);
-    if (kind === 'flowers') setSelectedScale('none');
+    if (!usesPersonScale(kind)) setSelectedScale('none');
     if (switchedFrom && switchedFrom !== kind) {
       setKindNotice(kindSwitchNotice(switchedFrom, kind));
     }
@@ -209,9 +209,7 @@ export default function App() {
   // Main Generate Image Action — snapshots form state so overlapping jobs stay independent.
   const handleGenerateImage = async () => {
     if (!imagePreviewUrl) {
-      setError(productKind === 'flowers'
-        ? 'Please upload a flower photo before generating.'
-        : 'Please upload a toy photo before generating.');
+      setError(`Please upload a ${productKindMeta(productKind).singular} photo before generating.`);
       return;
     }
 
@@ -242,7 +240,7 @@ export default function App() {
       productKind,
       description,
       style: selectedStyle,
-      personScale: productKind === 'flowers' ? 'none' : selectedScale,
+      personScale: usesPersonScale(productKind) ? selectedScale : 'none',
       styleRef: snapshotStyleRef,
       apiKey: getActiveApiKey(apiSettings),
       openaiImageModel: apiSettings.openaiImageModel,
@@ -252,7 +250,7 @@ export default function App() {
       id: crypto.randomUUID(),
       startedAt: performance.now(),
       style: snapshot.style,
-      productName: snapshot.productName.trim() || (snapshot.productKind === 'flowers' ? 'Bouquet' : 'Toy'),
+      productName: snapshot.productName.trim() || defaultProductName(snapshot.productKind),
     };
 
     jobsRef.current = [job, ...jobsRef.current];
@@ -289,10 +287,7 @@ export default function App() {
 
       const data = await response.json();
       const usedKind = parseProductKind(data.productKind ?? snapshot.productKind);
-      const switchedFrom: ProductKind | undefined =
-        data.kindSwitchedFrom === 'toy' || data.kindSwitchedFrom === 'flowers'
-          ? data.kindSwitchedFrom
-          : undefined;
+      const switchedFrom = asProductKind(data.kindSwitchedFrom);
 
       if (productKindRef.current === snapshot.productKind) {
         if (switchedFrom) {
@@ -310,7 +305,7 @@ export default function App() {
         sellingLine: data.sellingLine || '',
         marketingDescription: data.marketingDescription || snapshot.description,
         style: snapshot.style,
-        personScale: usedKind === 'flowers' ? 'none' : snapshot.personScale,
+        personScale: usesPersonScale(usedKind) ? snapshot.personScale : 'none',
         productName: snapshot.productName,
         toySizeCm: sizeCmForProduct(usedKind, data.toySizeCm ?? snapshot.toySizeCm),
         productKind: usedKind,
@@ -379,7 +374,7 @@ export default function App() {
               onKindSelect={(kind) => {
                 setProductKind(kind);
                 setKindNotice(null);
-                if (kind === 'flowers') setSelectedScale('none');
+                if (!usesPersonScale(kind)) setSelectedScale('none');
               }}
             />
 
@@ -421,7 +416,7 @@ export default function App() {
               onSelectRef={(ref) => setSelectedStyleRefId(ref?.id ?? null)}
             />
 
-            {productKind === 'toy' && (
+            {usesPersonScale(productKind) && (
               <ScaleSelector
                 selectedScale={selectedScale}
                 onScaleSelect={setSelectedScale}
@@ -509,7 +504,7 @@ export default function App() {
                 {runningCount > 0
                   ? `Rendering ${runningCount === 1 ? '1 shot' : `${runningCount} shots`} · ${formatElapsed(oldestElapsedMs)}`
                   : !imagePreviewUrl
-                    ? `Upload a ${productKind === 'flowers' ? 'flower' : 'toy'} photo to start · ${shotPrice.perImage}`
+                    ? `Upload a ${productKindMeta(productKind).singular} photo to start · ${shotPrice.perImage}`
                     : `${shotPrice.perImage} · ${shotPrice.model} · billed to your OpenAI key`}
               </p>
             </div>
@@ -568,7 +563,7 @@ export default function App() {
                     Studio Photo Preview Canvas
                   </h3>
                   <p className="text-xs text-slate-500 leading-relaxed">
-                    Upload a {productKind === 'flowers' ? 'flower' : 'toy'} snapshot on the left, pick your photography style, and click <span className="font-semibold text-indigo-600">Generate Professional Shot</span> to get clean catalog and promo images.
+                    Upload a {productKindMeta(productKind).singular} snapshot on the left, pick your photography style, and click <span className="font-semibold text-indigo-600">Generate Professional Shot</span> to get clean catalog and promo images.
                   </p>
                   {(selectedStyle === 'styled-promo' || selectedStyle === 'luxury-promo') && (
                     <p className="text-[11px] text-slate-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 leading-relaxed">
@@ -580,7 +575,7 @@ export default function App() {
                 {imagePreviewUrl && (
                   <div className="pt-2 flex items-center gap-2 text-xs font-semibold text-slate-600 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
                     <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                    Photo ready for "{productName || (productKind === 'flowers' ? 'Bouquet' : 'Toy')}" • Click Generate to render
+                    Photo ready for "{productName || defaultProductName(productKind)}" • Click Generate to render
                   </div>
                 )}
               </div>
