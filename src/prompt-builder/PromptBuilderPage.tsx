@@ -3,22 +3,27 @@ import { ArrowLeft, ChevronDown, ChevronUp, Flower2, RotateCcw, TriangleAlert } 
 import { REVIEW_TITLE, type PromptState } from '../../config/promptSteps';
 import { PresetsPanel } from './PresetsPanel';
 import { ReviewStep } from './ReviewStep';
+import { SetStep } from './SetStep';
+import { ShotView } from './ShotView';
 import { StepView } from './StepView';
 import {
+  SET_ID,
   buildPrompts,
   canSkipStep,
+  clearShotStep,
   clearStep,
   createInitialState,
   findConflicts,
   getStep,
   isStepValid,
-  isVariableStep,
-  selectionCap,
+  parseShotId,
   setCount,
+  setRole,
+  setShotText,
   setText,
-  setVariable,
+  shotId,
   toggleOption,
-  togglePersonImage,
+  toggleShotOption,
   visibleSteps,
 } from './logic';
 
@@ -34,13 +39,21 @@ export default function PromptBuilderPage() {
   const activeChip = useRef<HTMLButtonElement | null>(null);
 
   const steps = useMemo(() => visibleSteps(state), [state]);
+  const shotCount = state.shots.length;
   const items = useMemo(
-    () => [...steps.map((s) => ({ id: s.id, title: s.title })), { id: REVIEW_ID, title: REVIEW_TITLE }],
-    [steps],
+    () => [
+      ...steps.map((s) => ({ id: s.id, title: s.title })),
+      { id: SET_ID, title: 'Images' },
+      ...Array.from({ length: shotCount }, (_, i) => ({ id: shotId(i), title: `Image ${i + 1}` })),
+      { id: REVIEW_ID, title: REVIEW_TITLE },
+    ],
+    [steps, shotCount],
   );
   const currentIndex = Math.max(0, items.findIndex((item) => item.id === currentId));
-  const step = currentId === REVIEW_ID ? undefined : getStep(currentId);
   const isReview = currentId === REVIEW_ID;
+  const isSet = currentId === SET_ID;
+  const shotIndex = parseShotId(currentId);
+  const step = isReview || isSet || shotIndex !== undefined ? undefined : getStep(currentId);
   const conflicts = useMemo(() => findConflicts(state), [state]);
   const livePrompt = useMemo(() => buildPrompts(state)[0].blocks[0].text, [state]);
 
@@ -73,16 +86,15 @@ export default function PromptBuilderPage() {
   const handleLoadPreset = (loaded: PromptState) => {
     setState(loaded);
     const all = new Set(visibleSteps(loaded).map((s) => s.id));
+    all.add(SET_ID);
+    loaded.shots.forEach((_, i) => all.add(shotId(i)));
     all.add(REVIEW_ID);
     setVisited(all);
     setCurrentId(REVIEW_ID);
   };
 
   const valid = step ? isStepValid(step, state) : true;
-  const showSkip = !!step && canSkipStep(step, state);
-  const needsExact = !!step && isVariableStep(step, state);
-  const needed = step ? selectionCap(step, state) : 0;
-  const pickedCount = step ? (state.answers[step.id]?.length ?? 0) : 0;
+  const showSkip = !!step && canSkipStep(step);
 
   return (
     <div className="min-h-dvh bg-rose-50/40 text-slate-800">
@@ -153,7 +165,13 @@ export default function PromptBuilderPage() {
             Step {currentIndex + 1} of {items.length}
           </p>
           <h2 className="mt-1 font-display text-2xl font-bold text-slate-900">
-            {step ? step.question : 'Your prompt is ready'}
+            {step
+              ? step.question
+              : isSet
+                ? 'Which images do you need?'
+                : shotIndex !== undefined
+                  ? `Image ${shotIndex + 1}: set the scene`
+                  : 'Your prompt is ready'}
           </h2>
           {isReview && <p className="mt-1 text-sm text-slate-500">Copy it into ChatGPT. Tap a row to change a choice.</p>}
         </div>
@@ -164,10 +182,27 @@ export default function PromptBuilderPage() {
             step={step}
             state={state}
             onToggle={(optionId) => setState((prev) => toggleOption(prev, step, optionId))}
-            onCount={(count) => setState((prev) => setCount(prev, count))}
-            onVariable={(stepId) => setState((prev) => setVariable(prev, stepId))}
-            onTogglePersonImage={(index) => setState((prev) => togglePersonImage(prev, index))}
             onText={(value) => setState((prev) => setText(prev, step.id, value))}
+          />
+        )}
+
+        {isSet && (
+          <SetStep
+            state={state}
+            onCount={(count) => setState((prev) => setCount(prev, count))}
+            onRole={(index, roleId) => setState((prev) => setRole(prev, index, roleId))}
+          />
+        )}
+
+        {shotIndex !== undefined && state.shots[shotIndex] && (
+          <ShotView
+            key={currentId}
+            state={state}
+            index={shotIndex}
+            onToggle={(shotStep, optionId) => setState((prev) => toggleShotOption(prev, shotIndex, shotStep, optionId))}
+            onText={(shotStep, value) => setState((prev) => setShotText(prev, shotIndex, shotStep.id, value))}
+            onClear={(shotStep) => setState((prev) => clearShotStep(prev, shotIndex, shotStep))}
+            onRole={(roleId) => setState((prev) => setRole(prev, shotIndex, roleId))}
           />
         )}
 
@@ -221,11 +256,6 @@ export default function PromptBuilderPage() {
               Back
             </button>
             <div className="flex-1" />
-            {needsExact && !valid && (
-              <span className="text-xs font-semibold text-rose-600">
-                {pickedCount} of {needed}
-              </span>
-            )}
             {showSkip && (
               <button
                 type="button"

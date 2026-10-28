@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import type { PromptState, Step } from '../../config/promptSteps';
+import type { PromptState } from '../../config/promptSteps';
 import { TIP_LINE } from '../../config/promptSteps';
 import { CopyButton } from './CopyButton';
 import { PresetsPanel } from './PresetsPanel';
@@ -42,15 +42,15 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({ state, onJump, onLoadPre
   return (
     <div className="space-y-6">
       <ul className="divide-y divide-slate-100 rounded-2xl border border-slate-200 bg-white">
-        {summarize(state).map(({ step, value }: { step: Step; value: string }) => (
-          <li key={step.id}>
+        {summarize(state).map(({ id, title, value }) => (
+          <li key={id}>
             <button
               type="button"
-              onClick={() => onJump(step.id)}
+              onClick={() => onJump(id)}
               className="flex w-full items-baseline gap-3 px-4 py-2.5 text-left transition-colors hover:bg-rose-50 cursor-pointer"
             >
               <span className="w-24 shrink-0 text-xs font-bold uppercase tracking-wider text-slate-400">
-                {step.title}
+                {title}
               </span>
               <span className="min-w-0 flex-1 text-sm text-slate-700">{value}</span>
               <span className="text-xs font-bold text-rose-600">Edit</span>

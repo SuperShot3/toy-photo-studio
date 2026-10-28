@@ -9,17 +9,23 @@
  *   step's text field; without `{text}`, the text is appended after the phrase.
  */
 
-export type PromptState = {
-  /** How many images are in the set (1-4). */
-  count: number;
-  /** Step id of the one characteristic that changes between images. */
-  variable: string;
+/** The answers a condition can look at. A shot sees its own choices merged over the shared ones. */
+export type StepContext = {
   /** Selected option ids per step id, in the order they were picked. */
   answers: Record<string, string[]>;
   /** Free text per step id (product details, solid color, person look). */
   texts: Record<string, string>;
-  /** 0-based positions of the images that do NOT show the person (count > 1). Empty: every image has the person. */
-  withoutPerson: number[];
+};
+
+/** One image of the set: a role plus its own choices for every `scope: 'shot'` step. */
+export type Shot = StepContext & {
+  /** Id of the role the shot started from. */
+  role: string;
+};
+
+export type PromptState = StepContext & {
+  /** One entry per image (1-4). `answers` / `texts` above hold the shared steps. */
+  shots: Shot[];
 };
 
 export type Option = {
@@ -32,16 +38,18 @@ export type Option = {
   /** Short helper text under the label. */
   hint?: string;
   /** Conditional visibility. A selected option stays visible so it can be undone. */
-  showIf?: (state: PromptState) => boolean;
-  /** Content purpose only: option id to preselect in other steps (step id -> option id). */
+  showIf?: (state: StepContext) => boolean;
+  /** Content purpose only: option id to preselect in the shared steps (step id -> option id). */
   defaults?: Record<string, string>;
+  /** Product only: how big it looks next to a person. Added to the prompt of every image with a person. */
+  scale?: string;
 };
 
 export type TextField = {
   label: string;
   placeholder: string;
   /** Hide the field unless this returns true. Always shown when omitted. */
-  showIf?: (state: PromptState) => boolean;
+  showIf?: (state: StepContext) => boolean;
   /** Used for `{text}` in the phrase when the field is empty. */
   fallback?: string;
   multiline?: boolean;
@@ -51,35 +59,31 @@ export type Step = {
   id: string;
   title: string;
   question: string;
+  /** single: one option. multi: any number of options. text: text field only. */
+  type: 'single' | 'multi' | 'text';
   /**
-   * single: one option. multi: any number of options.
-   * count: number of images + which characteristic varies. text: text field only.
+   * Omitted: asked once for the whole set (product, look, format).
+   * 'shot': asked for each image on its own screen, starting from the image's role.
    */
-  type: 'single' | 'multi' | 'count' | 'text';
+  scope?: 'shot';
   /** Shows a "Skip" button. Skipped steps add nothing to the prompt. */
   optional?: boolean;
   options?: Option[];
   /** Text input shown under the option cards. */
   textField?: TextField;
   /** Hide the whole step (and keep it out of the prompt) unless this returns true. */
-  showIf?: (state: PromptState) => boolean;
-  /** When this step is the set's variable and count > 1, it takes exactly `count` picks. */
-  canBeVariable?: boolean;
-  /** `count` step only: allowed numbers of images. */
-  counts?: number[];
+  showIf?: (state: StepContext) => boolean;
   /** Put this step's phrases at the end of the description instead of in step order. */
   promptLast?: boolean;
-  /** Phrases only apply to images that show the person. The first such step offers the per-image chooser. */
-  perImagePerson?: boolean;
 };
 
 const img = (step: string, id: string) => `/prompt-builder/${step}/${id}.svg`;
 const photo = (step: string, id: string) => `/prompt-builder/${step}/${id}.jpg`;
 
-export const pickedId = (state: PromptState, stepId: string): string | undefined =>
+export const pickedId = (state: StepContext, stepId: string): string | undefined =>
   state.answers[stepId]?.[0];
 
-export const hasPerson = (state: PromptState) => {
+export const hasPerson = (state: StepContext) => {
   const person = pickedId(state, 'person');
   return person !== undefined && person !== 'none';
 };
@@ -104,17 +108,10 @@ export const promptSteps: Step[] = [
       {
         id: 'website',
         label: 'Website product photo',
-        hint: '1:1, white studio, clean',
+        hint: '1:1, bright studio, clean',
         image: img('purpose', 'website'),
         phrase: '',
-        defaults: {
-          format: 'square',
-          background: 'white-studio',
-          person: 'none',
-          style: 'ecommerce',
-          position: 'center',
-          lighting: 'bright-studio',
-        },
+        defaults: { format: 'square', style: 'ecommerce', lighting: 'bright-studio' },
       },
       {
         id: 'instagram',
@@ -130,46 +127,15 @@ export const promptSteps: Step[] = [
         hint: '9:16, space top and bottom',
         image: img('purpose', 'stories'),
         phrase: 'keep clean empty space at the top and bottom of the frame for text added later',
-        defaults: { format: 'vertical-9-16', position: 'center' },
+        defaults: { format: 'vertical-9-16' },
       },
       {
         id: 'banner',
         label: 'Banner / ads',
-        hint: '16:9, product on a third',
+        hint: '16:9, space for text',
         image: img('purpose', 'banner'),
         phrase: 'leave clean empty space on the side opposite the product for text added later',
-        defaults: { format: 'horizontal-16-9', position: 'left-third' },
-      },
-    ],
-  },
-  {
-    id: 'imageSet',
-    title: 'Image set',
-    question: 'How many images do you need?',
-    type: 'count',
-    counts: [1, 2, 3, 4],
-    // Options here are "what changes between images"; their id is the id of the step that varies.
-    options: [
-      {
-        id: 'angle',
-        label: 'Camera angle',
-        hint: 'Same scene, different viewpoints',
-        image: img('imageSet', 'angle'),
-        phrase: 'camera angle',
-      },
-      {
-        id: 'distance',
-        label: 'Distance',
-        hint: 'Same scene, closer or farther',
-        image: img('imageSet', 'distance'),
-        phrase: 'camera distance',
-      },
-      {
-        id: 'position',
-        label: 'Product position',
-        hint: 'Same scene, product moves in frame',
-        image: img('imageSet', 'position'),
-        phrase: 'product position in the frame',
+        defaults: { format: 'horizontal-16-9' },
       },
     ],
   },
@@ -179,21 +145,47 @@ export const promptSteps: Step[] = [
     question: 'What is the product?',
     type: 'single',
     options: [
-      { id: 'bouquet', label: 'Bouquet', image: img('product', 'bouquet'), phrase: 'bouquet' },
-      { id: 'balloons', label: 'Balloon bundle', image: img('product', 'balloons'), phrase: 'balloon bundle' },
-      { id: 'teddy', label: 'Teddy bear', image: img('product', 'teddy'), phrase: 'teddy bear' },
-      { id: 'gift-box', label: 'Gift box', image: img('product', 'gift-box'), phrase: 'gift box' },
+      {
+        id: 'bouquet',
+        label: 'Bouquet',
+        image: img('product', 'bouquet'),
+        phrase: 'bouquet',
+        scale: "a large, full bouquet about as wide as the person's shoulders",
+      },
+      {
+        id: 'balloons',
+        label: 'Balloon bundle',
+        image: img('product', 'balloons'),
+        phrase: 'balloon bundle',
+        scale: 'a balloon bundle at full real size, each balloon about the size of a head',
+      },
+      {
+        id: 'teddy',
+        label: 'Teddy bear',
+        image: img('product', 'teddy'),
+        phrase: 'teddy bear',
+        scale: 'a full-size teddy bear, big enough to hold against the chest',
+      },
+      {
+        id: 'gift-box',
+        label: 'Gift box',
+        image: img('product', 'gift-box'),
+        phrase: 'gift box',
+        scale: 'a gift box of realistic size, filling both hands',
+      },
       {
         id: 'bouquet-teddy',
         label: 'Bouquet + teddy',
         image: img('product', 'bouquet-teddy'),
         phrase: 'bouquet with a teddy bear',
+        scale: "a large, full bouquet about as wide as the person's shoulders and a full-size teddy bear",
       },
       {
         id: 'bouquet-balloons',
         label: 'Bouquet + balloons',
         image: img('product', 'bouquet-balloons'),
         phrase: 'bouquet with balloons',
+        scale: "a large, full bouquet about as wide as the person's shoulders with full-size balloons",
       },
       {
         id: 'custom',
@@ -211,11 +203,11 @@ export const promptSteps: Step[] = [
   },
   {
     id: 'angle',
+    scope: 'shot',
     title: 'Camera angle',
     question: 'Where is the camera?',
     type: 'single',
     optional: true,
-    canBeVariable: true,
     options: [
       {
         id: 'eye-level',
@@ -279,11 +271,11 @@ export const promptSteps: Step[] = [
   },
   {
     id: 'distance',
+    scope: 'shot',
     title: 'Distance',
     question: 'How close is the camera?',
     type: 'single',
     optional: true,
-    canBeVariable: true,
     options: [
       {
         id: 'macro',
@@ -313,11 +305,11 @@ export const promptSteps: Step[] = [
   },
   {
     id: 'position',
+    scope: 'shot',
     title: 'Position',
     question: 'Where is the product in the frame?',
     type: 'single',
     optional: true,
-    canBeVariable: true,
     options: [
       { id: 'center', label: 'Center', image: img('position', 'center'), phrase: 'product centered in the frame' },
       {
@@ -350,6 +342,7 @@ export const promptSteps: Step[] = [
   },
   {
     id: 'background',
+    scope: 'shot',
     title: 'Background',
     question: 'What is behind the product?',
     type: 'single',
@@ -415,6 +408,7 @@ export const promptSteps: Step[] = [
   },
   {
     id: 'blur',
+    scope: 'shot',
     title: 'Blur',
     question: 'How much depth of field?',
     type: 'single',
@@ -456,11 +450,11 @@ export const promptSteps: Step[] = [
   },
   {
     id: 'person',
+    scope: 'shot',
     title: 'Person',
     question: 'Is there a person in the picture?',
     type: 'single',
     optional: true,
-    perImagePerson: true,
     options: [
       { id: 'none', label: 'None', image: photo('person', 'none'), phrase: 'no people in the image' },
       { id: 'hands', label: 'Hands only', image: photo('person', 'hands'), phrase: 'only hands visible' },
@@ -495,11 +489,11 @@ export const promptSteps: Step[] = [
   },
   {
     id: 'interaction',
+    scope: 'shot',
     title: 'Interaction',
     question: 'What is the person doing?',
     type: 'single',
     optional: true,
-    perImagePerson: true,
     showIf: hasPerson,
     options: [
       {
@@ -654,14 +648,104 @@ export const promptSteps: Step[] = [
   },
 ];
 
-/** Non-blocking yellow notices. Add a rule here to warn about another combination. */
+/** Added to every image with a person so the product does not look small next to them. */
+export const PERSON_SCALE_SUFFIX = 'in realistic real-life proportion to the person, never small or miniature';
+export const PERSON_SCALE_FALLBACK = 'the product at full real-life size';
+
+/**
+ * A role is a ready-made shot. Picking one fills the image's steps with `defaults`
+ * (step id -> option id); the user can still change any of them.
+ * Add a role: push an object here, using option ids that exist in the steps above.
+ */
+export type Role = {
+  id: string;
+  label: string;
+  hint: string;
+  defaults: Record<string, string>;
+};
+
+export const MAX_IMAGES = 4;
+/** Roles used for image 1, 2, 3, 4 when the set is created or grows. */
+export const DEFAULT_ROLE_IDS = ['main', 'beautiful', 'person', 'detail'];
+export const DEFAULT_IMAGE_COUNT = 3;
+
+export const roles: Role[] = [
+  {
+    id: 'main',
+    label: 'Main',
+    hint: 'Clean product photo for the shop',
+    defaults: {
+      background: 'white-studio',
+      angle: 'eye-level',
+      distance: 'medium',
+      position: 'center',
+      blur: 'none',
+      person: 'none',
+    },
+  },
+  {
+    id: 'beautiful',
+    label: 'Beautiful',
+    hint: 'Styled, eye-catching scene',
+    defaults: {
+      background: 'home',
+      angle: 'three-quarter',
+      distance: 'medium',
+      position: 'center',
+      blur: 'soft',
+      person: 'none',
+    },
+  },
+  {
+    id: 'person',
+    label: 'With person',
+    hint: 'Someone holding it',
+    defaults: {
+      background: 'home',
+      angle: 'eye-level',
+      distance: 'medium',
+      position: 'center',
+      blur: 'soft',
+      person: 'covered-front',
+    },
+  },
+  {
+    id: 'detail',
+    label: 'Detail',
+    hint: 'Close-up of petals and texture',
+    defaults: {
+      background: 'home',
+      angle: 'detail',
+      distance: 'macro',
+      position: 'center',
+      blur: 'soft',
+      person: 'none',
+    },
+  },
+  {
+    id: 'hands',
+    label: 'Hands only',
+    hint: 'Hands holding it',
+    defaults: {
+      background: 'home',
+      angle: 'three-quarter',
+      distance: 'close',
+      position: 'center',
+      blur: 'soft',
+      person: 'hands',
+      interaction: 'holding',
+    },
+  },
+];
+
+/** Non-blocking yellow notices. Each rule is checked for every image (its choices over the shared ones). */
 export type ConflictRule = {
   id: string;
   message: string;
-  test: (state: PromptState) => boolean;
+  test: (state: StepContext) => boolean;
 };
 
-const has = (state: PromptState, stepId: string, optionId: string) =>
+const has = (state: StepContext, stepId: string, optionId: string) =>
   state.answers[stepId]?.includes(optionId) ?? false;
 
 export const conflictRules: ConflictRule[] = [
@@ -679,15 +763,6 @@ export const conflictRules: ConflictRule[] = [
     id: 'over-shoulder-no-person',
     message: 'Over-the-shoulder is selected but Person is set to None.',
     test: (s) => has(s, 'angle', 'over-shoulder') && has(s, 'person', 'none'),
-  },
-  {
-    id: 'over-shoulder-image-without-person',
-    message: 'An over-the-shoulder image needs the person. Switch that image back on under Person.',
-    test: (s) =>
-      s.count > 1 &&
-      s.variable === 'angle' &&
-      hasPerson(s) &&
-      (s.answers.angle ?? []).some((id, i) => id === 'over-shoulder' && s.withoutPerson.includes(i)),
   },
   {
     id: 'white-studio-outdoor-light',
