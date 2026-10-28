@@ -2,6 +2,7 @@ import {
   QUALITY_LINE,
   TIP_LINE,
   conflictRules,
+  hasPerson,
   promptSteps,
   type Option,
   type PromptState,
@@ -18,6 +19,7 @@ export function createInitialState(): PromptState {
     variable: countStep?.options?.[0]?.id ?? '',
     answers: {},
     texts: {},
+    withoutPerson: [],
   };
 }
 
@@ -63,6 +65,33 @@ export function isStepValid(step: Step, state: PromptState): boolean {
 export const canSkipStep = (step: Step, state: PromptState) =>
   !!step.optional && !isVariableStep(step, state);
 
+/** The step that offers the "which images have the person" chooser. */
+export const personChooserStep = promptSteps.find((step) => step.perImagePerson);
+
+/** More than one image, a person picked, and at least one image without them. */
+export const isMixedPerson = (state: PromptState) =>
+  state.count > 1 && hasPerson(state) && state.withoutPerson.length > 0;
+
+export const imageHasPerson = (state: PromptState, index: number) =>
+  hasPerson(state) && !state.withoutPerson.includes(index);
+
+/** Keep valid image positions only, and never let every image lose the person. */
+function clampPerson(state: PromptState): PromptState {
+  const without = Array.from(
+    new Set(state.withoutPerson.filter((i) => Number.isInteger(i) && i >= 0 && i < state.count)),
+  ).sort((a, b) => a - b);
+  return { ...state, withoutPerson: without.length >= state.count ? [] : without };
+}
+
+export function togglePersonImage(state: PromptState, index: number): PromptState {
+  const without = state.withoutPerson.includes(index)
+    ? state.withoutPerson.filter((i) => i !== index)
+    : [...state.withoutPerson, index];
+  // At least one image keeps the person.
+  if (without.length >= state.count) return state;
+  return clampPerson({ ...state, withoutPerson: without });
+}
+
 /** Trim every answer list to what the step allows and drop ids that no longer exist. */
 function clampAnswers(state: PromptState): PromptState {
   const answers: Record<string, string[]> = {};
@@ -72,7 +101,7 @@ function clampAnswers(state: PromptState): PromptState {
     const capped = picked.slice(0, selectionCap(step, state));
     if (capped.length > 0) answers[step.id] = capped;
   }
-  return { ...state, answers };
+  return clampPerson({ ...state, answers });
 }
 
 /** Make an unknown value (a stored preset) into a valid state for the current config. */
@@ -99,7 +128,10 @@ export function sanitizeState(raw: unknown): PromptState {
       if (typeof text === 'string') texts[stepId] = text;
     }
   }
-  return clampAnswers({ count, variable, answers, texts });
+  const withoutPerson = Array.isArray(input.withoutPerson)
+    ? input.withoutPerson.filter((i): i is number => typeof i === 'number')
+    : [];
+  return clampAnswers({ count, variable, answers, texts, withoutPerson });
 }
 
 export const setCount = (state: PromptState, count: number): PromptState =>
@@ -191,6 +223,13 @@ export function variableLabel(state: PromptState): string {
   return countStep?.options?.find((option) => option.id === state.variable)?.phrase ?? 'camera angle';
 }
 
+/** Option labels of the varying step in image order, for naming the images in the UI. */
+export function variableLabels(state: PromptState): string[] {
+  const step = getStep(state.variable);
+  const picked = state.answers[state.variable] ?? [];
+  return Array.from({ length: state.count }, (_, i) => step?.options?.find((o) => o.id === picked[i])?.label ?? '');
+}
+
 /** Option phrases of the varying step, in the order the user picked them. */
 export function variableValues(state: PromptState): string[] {
   const step = getStep(state.variable);
@@ -205,10 +244,24 @@ function productNoun(state: PromptState): string {
   return option?.phrase || 'product';
 }
 
+/** What the person looks like and does, for the images that show them. */
+function personPhrases(state: PromptState): string[] {
+  return promptSteps
+    .filter((step) => step.perImagePerson && isStepVisible(step, state))
+    .flatMap((step) => selectedPhrases(step, state));
+}
+
+/** Per-image person sentence, used only when some images have no person. */
+function personLine(state: PromptState, index: number): string {
+  return imageHasPerson(state, index) ? `Person: ${personPhrases(state).join(', ')}.` : 'No people in this image.';
+}
+
 function sharedItems(state: PromptState): string[] {
   const varying = state.count > 1 ? state.variable : undefined;
+  const mixed = isMixedPerson(state);
   const inPrompt = promptSteps.filter(
-    (step) => step.type !== 'count' && step.id !== varying && isStepVisible(step, state),
+    (step) =>
+      step.type !== 'count' && step.id !== varying && !(mixed && step.perImagePerson) && isStepVisible(step, state),
   );
   return [...inPrompt.filter((step) => !step.promptLast), ...inPrompt.filter((step) => step.promptLast)]
     .flatMap((step) => selectedPhrases(step, state));
@@ -244,16 +297,19 @@ export function buildPrompts(state: PromptState): PromptTab[] {
 
   const label = variableLabel(state);
   const values = variableValues(state).map((value) => value || '(not chosen yet)');
+  const mixed = isMixedPerson(state);
 
   const oneMessage = [
     `Create ${state.count} separate images of the same ${noun} in the same scene.`,
-    'Keep the product, background, lighting, person and style identical in every image.',
-    `Change only the ${label}.`,
+    mixed
+      ? 'Keep the product, background, lighting and style identical in every image. Use the same person in every image that has one.'
+      : 'Keep the product, background, lighting, person and style identical in every image.',
+    mixed ? `Change only the ${label} and whether the person appears, as listed below.` : `Change only the ${label}.`,
     '',
     description,
     quality,
     '',
-    ...values.map((value, i) => `Image ${i + 1}: ${value}`),
+    ...values.map((value, i) => `Image ${i + 1}: ${value}${mixed ? `. ${personLine(state, i)}` : ''}`),
   ]
     .filter((line, i, all) => line !== '' || (all[i - 1] !== '' && i > 0))
     .join('\n');
@@ -266,13 +322,14 @@ export function buildPrompts(state: PromptState): PromptTab[] {
             [
               `Create an image of the ${noun}.`,
               `${capitalize(label)}: ${value}.`,
+              mixed ? personLine(state, i) : '',
               description.replace('Shared description', 'Description'),
               quality,
             ]
               .filter(Boolean)
               .join('\n'),
           )
-        : `Same product, same scene, same lighting and style as the previous image. Change only the ${label} to: ${value}. Keep everything else identical.`,
+        : `Same product, same scene, same lighting and style as the previous image. Change only the ${label} to: ${value}.${mixed ? ` ${personLine(state, i)}` : ''} Keep everything else identical.`,
   }));
 
   return [
@@ -307,7 +364,14 @@ export function summarize(state: PromptState): { step: Step; value: string }[] {
       .map((id) => step.options?.find((option) => option.id === id)?.label)
       .filter((label): label is string => !!label);
     const text = isTextFieldVisible(step, state) ? userText(state.texts[step.id]) : '';
-    const value = [labels.join(' · '), text].filter(Boolean).join(' — ');
+    const base = [labels.join(' · '), text].filter(Boolean).join(' — ');
+    const images = state.count > 1 && step.perImagePerson && isMixedPerson(state)
+      ? ` (images ${Array.from({ length: state.count }, (_, i) => i)
+          .filter((i) => imageHasPerson(state, i))
+          .map((i) => i + 1)
+          .join(', ')})`
+      : '';
+    const value = base ? base + images : '';
     return value ? [{ step, value }] : [];
   });
 }

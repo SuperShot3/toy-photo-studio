@@ -3,11 +3,15 @@ import type { PromptState, Step } from '../../config/promptSteps';
 import { OptionCard } from './OptionCard';
 import {
   countStep,
+  imageHasPerson,
   isTextFieldVisible,
   isVariableStep,
+  personChooserStep,
   selectionCap,
+  variableLabels,
   visibleOptions,
 } from './logic';
+import { hasPerson } from '../../config/promptSteps';
 
 interface StepViewProps {
   step: Step;
@@ -15,12 +19,21 @@ interface StepViewProps {
   onToggle: (optionId: string) => void;
   onCount: (count: number) => void;
   onVariable: (stepId: string) => void;
+  onTogglePersonImage: (index: number) => void;
   onText: (value: string) => void;
 }
 
 const GRID = 'grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4';
 
-export const StepView: React.FC<StepViewProps> = ({ step, state, onToggle, onCount, onVariable, onText }) => {
+export const StepView: React.FC<StepViewProps> = ({
+  step,
+  state,
+  onToggle,
+  onCount,
+  onVariable,
+  onTogglePersonImage,
+  onText,
+}) => {
   const picked = state.answers[step.id] ?? [];
   const cap = selectionCap(step, state);
   const variable = isVariableStep(step, state);
@@ -72,6 +85,8 @@ export const StepView: React.FC<StepViewProps> = ({ step, state, onToggle, onCou
 
   const options = visibleOptions(step, state);
   const showText = isTextFieldVisible(step, state);
+  const perImage = !!step.perImagePerson && state.count > 1 && hasPerson(state);
+  const labels = variableLabels(state);
 
   return (
     <div className="space-y-5">
@@ -107,6 +122,46 @@ export const StepView: React.FC<StepViewProps> = ({ step, state, onToggle, onCou
             );
           })}
         </div>
+      )}
+
+      {perImage && step.id === personChooserStep?.id && (
+        <div className="space-y-2.5 rounded-xl border border-slate-200 bg-white p-3.5">
+          <div>
+            <h3 className="text-sm font-bold text-slate-800">Which images include the person?</h3>
+            <p className="text-xs text-slate-500">
+              Switch off the images that should show only the product. Keep at least one.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {Array.from({ length: state.count }, (_, i) => {
+              const on = imageHasPerson(state, i);
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  role="switch"
+                  aria-checked={on}
+                  onClick={() => onTogglePersonImage(i)}
+                  className={`rounded-xl border-2 px-3 py-2.5 text-left transition-all cursor-pointer ${
+                    on
+                      ? 'border-rose-500 bg-rose-50 text-rose-700'
+                      : 'border-slate-200 bg-white text-slate-400 hover:border-rose-300'
+                  }`}
+                >
+                  <span className="block text-sm font-extrabold">Image {i + 1}</span>
+                  {labels[i] && <span className="block truncate text-xs font-medium opacity-80">{labels[i]}</span>}
+                  <span className="mt-1 block text-xs font-bold">{on ? 'With person' : 'No person'}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {perImage && step.id !== personChooserStep?.id && state.withoutPerson.length > 0 && (
+        <p className="rounded-xl bg-slate-100 px-3.5 py-2.5 text-xs font-medium text-slate-600">
+          This only applies to the images with the person (change that on the Person step).
+        </p>
       )}
 
       {(showText || step.type === 'text') && step.textField && (

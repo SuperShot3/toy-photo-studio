@@ -18,6 +18,7 @@ import {
   setText,
   setVariable,
   toggleOption,
+  togglePersonImage,
   visibleSteps,
 } from './logic';
 
@@ -165,6 +166,7 @@ export default function PromptBuilderPage() {
             onToggle={(optionId) => setState((prev) => toggleOption(prev, step, optionId))}
             onCount={(count) => setState((prev) => setCount(prev, count))}
             onVariable={(stepId) => setState((prev) => setVariable(prev, stepId))}
+            onTogglePersonImage={(index) => setState((prev) => togglePersonImage(prev, index))}
             onText={(value) => setState((prev) => setText(prev, step.id, value))}
           />
         )}

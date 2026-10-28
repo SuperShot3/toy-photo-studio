@@ -18,6 +18,8 @@ export type PromptState = {
   answers: Record<string, string[]>;
   /** Free text per step id (product details, solid color, person look). */
   texts: Record<string, string>;
+  /** 0-based positions of the images that do NOT show the person (count > 1). Empty: every image has the person. */
+  withoutPerson: number[];
 };
 
 export type Option = {
@@ -67,6 +69,8 @@ export type Step = {
   counts?: number[];
   /** Put this step's phrases at the end of the description instead of in step order. */
   promptLast?: boolean;
+  /** Phrases only apply to images that show the person. The first such step offers the per-image chooser. */
+  perImagePerson?: boolean;
 };
 
 const img = (step: string, id: string) => `/prompt-builder/${step}/${id}.svg`;
@@ -75,7 +79,7 @@ const photo = (step: string, id: string) => `/prompt-builder/${step}/${id}.jpg`;
 export const pickedId = (state: PromptState, stepId: string): string | undefined =>
   state.answers[stepId]?.[0];
 
-const hasPerson = (state: PromptState) => {
+export const hasPerson = (state: PromptState) => {
   const person = pickedId(state, 'person');
   return person !== undefined && person !== 'none';
 };
@@ -456,6 +460,7 @@ export const promptSteps: Step[] = [
     question: 'Is there a person in the picture?',
     type: 'single',
     optional: true,
+    perImagePerson: true,
     options: [
       { id: 'none', label: 'None', image: photo('person', 'none'), phrase: 'no people in the image' },
       { id: 'hands', label: 'Hands only', image: photo('person', 'hands'), phrase: 'only hands visible' },
@@ -494,6 +499,7 @@ export const promptSteps: Step[] = [
     question: 'What is the person doing?',
     type: 'single',
     optional: true,
+    perImagePerson: true,
     showIf: hasPerson,
     options: [
       {
@@ -673,6 +679,15 @@ export const conflictRules: ConflictRule[] = [
     id: 'over-shoulder-no-person',
     message: 'Over-the-shoulder is selected but Person is set to None.',
     test: (s) => has(s, 'angle', 'over-shoulder') && has(s, 'person', 'none'),
+  },
+  {
+    id: 'over-shoulder-image-without-person',
+    message: 'An over-the-shoulder image needs the person. Switch that image back on under Person.',
+    test: (s) =>
+      s.count > 1 &&
+      s.variable === 'angle' &&
+      hasPerson(s) &&
+      (s.answers.angle ?? []).some((id, i) => id === 'over-shoulder' && s.withoutPerson.includes(i)),
   },
   {
     id: 'white-studio-outdoor-light',
