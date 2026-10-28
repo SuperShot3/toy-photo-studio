@@ -6,6 +6,9 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// Steps whose placeholders were replaced by real photos (.jpg); do not regenerate them.
+const SKIP_STEPS = new Set(['angle', 'person', 'interaction', 'blur']);
+
 const OUT = join(dirname(fileURLToPath(import.meta.url)), '..', 'public', 'prompt-builder');
 
 const C = {
@@ -268,6 +271,8 @@ add('blur', 'soft', blurDefs('b', 7) + `<g filter="url(#b)">${bgSpots}</g>` + bo
 add('blur', 'bokeh', `<rect width="200" height="200" fill="#1e1b4b"/>` + [[36, 48, 20], [150, 40, 26], [170, 120, 18], [30, 130, 24], [96, 30, 12], [120, 168, 14], [60, 90, 9]].map(([x, y, r], i) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${['#fde68a', '#fbcfe8', '#fff'][i % 3]}" opacity=".55"/>`).join('') + bouquet(1.2, 100, 108) + label('bokeh', 100, 24, 12, '#fff'), '#1e1b4b');
 add('blur', 'foreground', blurDefs('b', 6) + bouquet(1.2, 100, 108) + `<g filter="url(#b)"><ellipse cx="14" cy="170" rx="50" ry="22" fill="${C.green}" transform="rotate(-25 14 170)"/><ellipse cx="190" cy="176" rx="50" ry="20" fill="${C.greenDark}" transform="rotate(25 190 176)"/><circle cx="180" cy="30" r="22" fill="${C.pink}"/><circle cx="20" cy="26" r="18" fill="${C.pink}"/></g>` + label('blurred edges', 100, 24, 12));
 
+add('blur', 'sides', blurDefs('b', 6) + `<clipPath id="l"><rect x="0" y="0" width="46" height="200"/></clipPath><clipPath id="r"><rect x="154" y="0" width="46" height="200"/></clipPath>` + bgSpots + ['l', 'r'].map((id, i) => `<g clip-path="url(#${id})"><rect x="${i ? 154 : 0}" width="46" height="200" fill="${C.bg}"/><g filter="url(#b)">${bgSpots}</g></g>`).join('') + bouquet(1.2, 100, 108) + label('blurred sides', 100, 24, 12));
+
 // Person ------------------------------------------------------------------------------------
 add('person', 'none', ground() + bouquet(1.3, 100, 112) + label('no people', 100, 28));
 add('person', 'hands', ground(180) + arm(40, 190, 92, 120) + arm(160, 190, 108, 120) + hand(92, 116, 8) + hand(108, 116, 8) + bouquet(1.0, 100, 90) + label('hands only', 100, 24, 12));
@@ -320,6 +325,7 @@ add('purpose', 'banner', `<rect x="12" y="52" width="176" height="96" rx="8" fil
 // ---- write -------------------------------------------------------------------------------------
 let count = 0;
 for (const [step, byId] of Object.entries(images)) {
+  if (SKIP_STEPS.has(step)) continue;
   mkdirSync(join(OUT, step), { recursive: true });
   for (const [id, markup] of Object.entries(byId)) {
     writeFileSync(join(OUT, step, `${id}.svg`), markup + '\n');
