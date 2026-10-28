@@ -1,5 +1,5 @@
 import React from 'react';
-import { Camera, Menu } from 'lucide-react';
+import { Camera, Menu, Wand } from 'lucide-react';
 
 interface HeaderProps {
   onOpenSettings: () => void;
@@ -28,14 +28,23 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSettings }) => {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={onOpenSettings}
-          className="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 cursor-pointer"
-          aria-label="Open settings"
-        >
-          <Menu className="w-5 h-5" />
-        </button>
+        <div className="flex items-center gap-2">
+          <a
+            href="/prompt-builder"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100"
+          >
+            <Wand className="w-4 h-4" />
+            <span className="hidden sm:inline">Prompt Builder</span>
+          </a>
+          <button
+            type="button"
+            onClick={onOpenSettings}
+            className="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 cursor-pointer"
+            aria-label="Open settings"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+        </div>
       </div>
     </header>
   );
